@@ -102,7 +102,7 @@ flowchart LR
 Two actions only, matching the brief's curation verbs:
 
 - **Promote** → sets `manual_override = TRUE`. This is the absolute `+100.0` trump in the ranking view, so the job jumps to the front of the next Supervisor pull regardless of its computed score. (Promote does **not** itself move `wip_status`; the Supervisor still owns the icebox→queued transition under its WIP limit. Promote only guarantees it is next.)
-- **Drop** → sets `status = 'user_rejected'`, removing it from `v_icebox_ranked` (the view filters `status = 'sourced'`) so it never resurfaces.
+- **Drop** → sets `status = 'user_rejected'` and `wip_status = 'done'` (retiring it from the scheduler's Icebox), removing it from `v_icebox_ranked` (the view filters `status = 'sourced'`) so it never resurfaces.
 
 ```sql
 -- Promote
@@ -110,11 +110,13 @@ UPDATE application SET manual_override = TRUE, updated_at = now()
 WHERE id = %(app_id)s AND user_id = %(uid)s;
 
 -- Drop
-UPDATE application SET status = 'user_rejected', updated_at = now()
+UPDATE application SET status = 'user_rejected', wip_status = 'done', updated_at = now()
 WHERE id = %(app_id)s AND user_id = %(uid)s;
 ```
 
 A card surfaces the human-legible inputs to the score — `company`, `title`, `remote_mode`, `posted_at`, `applicant_count`, `closing_date` — so the operator can sanity-check *why* something ranked where it did before promoting it.
+
+> **Implemented (lite).** `aeroapply ui` ships the lite Kanban: a single Python-ranked Icebox list of cards (title · company · location, the five score components, and `execution_priority`) with **Promote** / **Drop** buttons — read + curate only, no submit/apply/credential path. The priority-band columns above remain the next step. Cards are assembled by `src/aeroapply/ui/board.py` (pure, over `rank_jobs`) and rendered by `src/aeroapply/ui/kanban.py`; Promote/Drop go through `db/repo.py`, which also appends the `application_event` audit row (actor `human`). The live score components shown are the seam `ranking_debug` (#80) will later persist.
 
 ---
 

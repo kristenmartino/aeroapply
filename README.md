@@ -45,9 +45,9 @@ uv run ruff check . && uv run mypy src
 # 3. Read-only sourcing (works today): ingest a Greenhouse board → Bouncer → Icebox, then rank
 uv run aeroapply source --board <greenhouse_token>   # fetch → bouncer → icebox (read-only)
 uv run aeroapply rank                                # Python-ranked Icebox (rank_jobs, not the view)
+uv run aeroapply ui                                  # Streamlit Kanban-lite: ranked Icebox + Promote/Drop
 # (scaffolds — wired up across later sprints)
 uv run aeroapply schedule             # WIP scheduler → execution graph
-uv run aeroapply ui                   # Streamlit Inbox/Ledger/Kanban
 uv run uvicorn services.email_webhook.app:app   # inbound-email webhook (prod: Railway)
 ```
 
