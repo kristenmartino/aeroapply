@@ -119,3 +119,47 @@ def test_snapshot_ranking_debug_persists_components():
     finally:
         conn.rollback()
         conn.close()
+
+
+def test_curation_events_carry_label_and_ranking_context():
+    from aeroapply.config import load_profile
+    from aeroapply.connectors.base import NormalizedPosting
+    from aeroapply.db import repo
+    from aeroapply.sourcing.scheduler import snapshot_ranking_debug
+
+    profile = load_profile(EXAMPLE)
+    ai = NormalizedPosting(source_key="greenhouse", external_id="zz5", company="ZZTestCo",
+                           title="ZZTEST AI Product Manager", remote_mode="remote", location="Remote")
+    ba = NormalizedPosting(source_key="greenhouse", external_id="zz6", company="ZZTestCo",
+                           title="ZZTEST Senior Business Analyst", remote_mode="remote", location="Remote")
+
+    conn = repo.connect(os.environ["DATABASE_URL"])
+    try:
+        user_id = repo.ensure_operator(conn, profile)
+        repo.upsert_icebox(conn, user_id, [ai, ba])
+        snapshot_ranking_debug(conn, user_id, profile.ranking_weights)
+        by_title = {job["title"]: aid for aid, job, _ in repo.fetch_icebox(conn, user_id)}
+
+        repo.promote(conn, by_title[ai.title])
+        repo.drop(conn, by_title[ba.title])
+
+        def latest_event(app_id):
+            return conn.execute(
+                """SELECT event_type, actor, payload FROM application_event
+                   WHERE application_id = %s ORDER BY created_at DESC LIMIT 1""",
+                (app_id,),
+            ).fetchone()
+
+        et, actor, payload = latest_event(by_title[ai.title])
+        assert (et, actor) == ("promote", "human")
+        assert payload["action"] == "promote" and payload["label"] == "manual_override"
+        # the human label is paired with the ranker features visible at decision time
+        assert payload["ranking_debug"]["components"]["title"] == pytest.approx(1.0)
+
+        et2, actor2, payload2 = latest_event(by_title[ba.title])
+        assert (et2, actor2) == ("drop", "human")
+        assert payload2["action"] == "drop" and payload2["label"] == "hard_negative"
+        assert payload2["ranking_debug"] is not None
+    finally:
+        conn.rollback()
+        conn.close()
