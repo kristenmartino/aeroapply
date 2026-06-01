@@ -32,7 +32,7 @@ Per **operator review** (the ground-truth label for thresholds), emit `applicati
 - `event_type='human_edited'` (payload = diff size) — operator changed it ⇒ gate *should* have held.
 - `event_type='human_rejected'` / `'user_rejected'` — hard negative.
 
-> **Implemented (curation).** Kanban **Promote**/**Drop** (#83) now emit `human` `application_event` rows whose payload carries `{action, label, ranking_debug}` — pairing each curation label (`manual_override` for Promote, `hard_negative` for Drop) with the ranker features (`ranking_debug`) visible at decision time, via `db/repo.py`. The draft-review `human_approved_unchanged` / `human_edited` events still await the Inbox.
+> **Implemented (curation).** Kanban **Promote**/**Drop** (#83) now emit `human` `application_event` rows whose payload carries `{action, label, ranking_debug, ranking_debug_present}` — pairing each curation label (`manual_override` for Promote, `hard_negative` for Drop) with the ranker features **when a snapshot exists** (`aeroapply rank --persist` / `scheduler.snapshot_ranking_debug`), via `db/repo.py`. A bare Kanban action with no prior snapshot has no features, so `ranking_debug_present` is `false` — flagging the unpaired label rather than pretending it is calibrated. (A follow-up could snapshot automatically before Promote/Drop so every curation event is paired.) The draft-review `human_approved_unchanged` / `human_edited` events still await the Inbox.
 
 Per **outcome** (the reward signal for weights), already captured via `status` transitions + `application_event`: `submitted → questionnaire → interview → offer → accepted | rejected`. Derive labels: `responded` (any employer reply), `interview`, `offer`.
 

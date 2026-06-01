@@ -163,11 +163,18 @@ def _event(
 
 def _curation_payload(event_type: str, ranking_debug: dict[str, Any] | None) -> dict[str, Any]:
     """Audit payload for a human curation action: the calibration label + the ranking
-    snapshot (ranker features) that was visible when the operator acted (#80)."""
+    snapshot (ranker features) visible when the operator acted (#80).
+
+    `ranking_debug` is only populated if a snapshot was taken first (``rank --persist`` /
+    ``scheduler.snapshot_ranking_debug``); a bare Kanban Promote/Drop has none. The
+    ``ranking_debug_present`` flag makes that explicit so calibration can tell a fully
+    paired (features, label) record from a label with no features.
+    """
     return {
         "action": event_type,
         "label": _CURATION_LABELS.get(event_type),
         "ranking_debug": ranking_debug,
+        "ranking_debug_present": ranking_debug is not None,
     }
 
 

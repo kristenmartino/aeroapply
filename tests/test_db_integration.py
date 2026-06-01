@@ -155,11 +155,45 @@ def test_curation_events_carry_label_and_ranking_context():
         assert payload["action"] == "promote" and payload["label"] == "manual_override"
         # the human label is paired with the ranker features visible at decision time
         assert payload["ranking_debug"]["components"]["title"] == pytest.approx(1.0)
+        assert payload["ranking_debug_present"] is True
 
         et2, actor2, payload2 = latest_event(by_title[ba.title])
         assert (et2, actor2) == ("drop", "human")
         assert payload2["action"] == "drop" and payload2["label"] == "hard_negative"
         assert payload2["ranking_debug"] is not None
+        assert payload2["ranking_debug_present"] is True
+    finally:
+        conn.rollback()
+        conn.close()
+
+
+def test_curation_event_without_snapshot_flags_missing():
+    # The real Kanban path: Promote/Drop with no prior `rank --persist` snapshot, so the
+    # label is recorded WITHOUT ranker features and ranking_debug_present is False.
+    from aeroapply.config import load_profile
+    from aeroapply.connectors.base import NormalizedPosting
+    from aeroapply.db import repo
+
+    profile = load_profile(EXAMPLE)
+    job = NormalizedPosting(source_key="greenhouse", external_id="zz7", company="ZZTestCo",
+                            title="ZZTEST AI Product Manager", remote_mode="remote", location="Remote")
+
+    conn = repo.connect(os.environ["DATABASE_URL"])
+    try:
+        user_id = repo.ensure_operator(conn, profile)
+        repo.upsert_icebox(conn, user_id, [job])
+        app_id = next(aid for aid, j, _ in repo.fetch_icebox(conn, user_id) if j["title"] == job.title)
+
+        repo.promote(conn, app_id)  # no snapshot taken first
+
+        payload = conn.execute(
+            """SELECT payload FROM application_event
+               WHERE application_id = %s ORDER BY created_at DESC LIMIT 1""",
+            (app_id,),
+        ).fetchone()[0]
+        assert payload["action"] == "promote" and payload["label"] == "manual_override"
+        assert payload["ranking_debug"] is None
+        assert payload["ranking_debug_present"] is False
     finally:
         conn.rollback()
         conn.close()
