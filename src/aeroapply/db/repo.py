@@ -3,8 +3,9 @@
 Scope: ensure the operator row, upsert survivors as `job` + icebox `application`,
 read the Icebox for Python ranking, and apply operator Promote/Drop curation with
 an audit event. **No submission / credential / apply code lives here.** The async
-pool + full DAL is #14; the richer review telemetry (`ranking_debug`,
-`human_approved_unchanged`, …) is #80 — this only opens those seams.
+pool + full DAL is #14. Review telemetry (#80): `ranking_debug` is persisted via
+`set_ranking_debug`, and Promote/Drop carry it on their `human` audit events; the
+draft-review `human_*` events await the Inbox (EPIC-UI).
 """
 
 from __future__ import annotations
@@ -17,6 +18,19 @@ from psycopg.types.json import Jsonb
 
 from aeroapply.config import Profile
 from aeroapply.connectors.base import NormalizedPosting
+
+# --- Human-review event vocabulary (application_event.event_type, actor='human') -----
+# Curation surfaces that exist today — Kanban Promote/Drop (#83):
+EVENT_PROMOTE = "promote"
+EVENT_DROP = "drop"
+# Reserved for the draft-review Inbox (EPIC-UI/M3); the operator-review labels calibration
+# needs (docs/CALIBRATION.md). Defined now so the vocabulary is standard once that surface lands:
+EVENT_HUMAN_APPROVED_UNCHANGED = "human_approved_unchanged"
+EVENT_HUMAN_EDITED = "human_edited"
+EVENT_HUMAN_REJECTED = "human_rejected"
+
+# The calibration label for a curation action, decoupled from the event_type verb.
+_CURATION_LABELS = {EVENT_PROMOTE: "manual_override", EVENT_DROP: "hard_negative"}
 
 
 @dataclass
@@ -134,30 +148,55 @@ def fetch_icebox(conn: psycopg.Connection, user_id: str) -> list[tuple[str, dict
     return out
 
 
-def _event(conn: psycopg.Connection, application_id: str, event_type: str) -> None:
+def _event(
+    conn: psycopg.Connection,
+    application_id: str,
+    event_type: str,
+    payload: dict[str, Any] | None = None,
+) -> None:
     conn.execute(
         """INSERT INTO application_event (application_id, event_type, actor, payload)
-           VALUES (%s, %s, 'human', '{}')""",
-        (application_id, event_type),
+           VALUES (%s, %s, 'human', %s)""",
+        (application_id, event_type, Jsonb(payload if payload is not None else {})),
     )
+
+
+def _curation_payload(event_type: str, ranking_debug: dict[str, Any] | None) -> dict[str, Any]:
+    """Audit payload for a human curation action: the calibration label + the ranking
+    snapshot (ranker features) visible when the operator acted (#80).
+
+    `ranking_debug` is only populated if a snapshot was taken first (``rank --persist`` /
+    ``scheduler.snapshot_ranking_debug``); a bare Kanban Promote/Drop has none. The
+    ``ranking_debug_present`` flag makes that explicit so calibration can tell a fully
+    paired (features, label) record from a label with no features.
+    """
+    return {
+        "action": event_type,
+        "label": _CURATION_LABELS.get(event_type),
+        "ranking_debug": ranking_debug,
+        "ranking_debug_present": ranking_debug is not None,
+    }
 
 
 def promote(conn: psycopg.Connection, application_id: str) -> None:
-    conn.execute(
-        "UPDATE application SET manual_override = TRUE, updated_at = now() WHERE id = %s",
+    row = conn.execute(
+        """UPDATE application SET manual_override = TRUE, updated_at = now()
+           WHERE id = %s RETURNING ranking_debug""",
         (application_id,),
-    )
-    _event(conn, application_id, "promote")
+    ).fetchone()
+    ranking_debug = row[0] if row else None
+    _event(conn, application_id, EVENT_PROMOTE, _curation_payload(EVENT_PROMOTE, ranking_debug))
 
 
 def drop(conn: psycopg.Connection, application_id: str) -> None:
     # user_rejected is terminal: also retire the scheduler state out of the Icebox.
-    conn.execute(
+    row = conn.execute(
         """UPDATE application SET status = 'user_rejected', wip_status = 'done', updated_at = now()
-           WHERE id = %s""",
+           WHERE id = %s RETURNING ranking_debug""",
         (application_id,),
-    )
-    _event(conn, application_id, "drop")
+    ).fetchone()
+    ranking_debug = row[0] if row else None
+    _event(conn, application_id, EVENT_DROP, _curation_payload(EVENT_DROP, ranking_debug))
 
 
 def set_ranking_debug(
@@ -173,4 +212,6 @@ def set_ranking_debug(
 __all__ = [
     "UpsertCounts", "connect", "ensure_operator", "upsert_icebox",
     "fetch_icebox", "promote", "drop", "set_ranking_debug",
+    "EVENT_PROMOTE", "EVENT_DROP", "EVENT_HUMAN_APPROVED_UNCHANGED",
+    "EVENT_HUMAN_EDITED", "EVENT_HUMAN_REJECTED",
 ]
