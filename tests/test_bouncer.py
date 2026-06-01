@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from aeroapply.sourcing.bouncer import SourcingBouncer
 
@@ -45,7 +45,7 @@ def test_legal_blocker_drop():
 
 def test_ghost_job_drop():
     b = SourcingBouncer()
-    old = datetime.now(timezone.utc) - timedelta(days=60)
+    old = datetime.now(UTC) - timedelta(days=60)
     keep, _ = b.should_keep(
         {"title": "AI Product Manager", "description": "", "remote_mode": "remote", "posted_at": old}
     )

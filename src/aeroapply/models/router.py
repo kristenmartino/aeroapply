@@ -3,7 +3,8 @@
 Every graph node asks the router for its model by *node name*. Resolution order
 (highest precedence first):
 
-    1. Environment override   MODEL__<NODE>=provider:model_id   (e.g. MODEL__TAILOR_GENERATOR=anthropic:claude-opus-4-8)
+    1. Env override:  MODEL__<NODE>=provider:model_id
+       (e.g. MODEL__TAILOR_GENERATOR=anthropic:claude-opus-4-8)
     2. DB row in model_config (node_name unique)  — editable at runtime from the UI
     3. DEFAULT_REGISTRY below
 
@@ -31,7 +32,7 @@ class ModelSpec:
     provider: str                       # anthropic | deepseek | openai | ollama
     model_id: str
     params: dict[str, Any] = field(default_factory=dict)
-    fallback: "ModelSpec | None" = None
+    fallback: ModelSpec | None = None
 
 
 # Task-class defaults. Nodes map to one of these via DEFAULT_REGISTRY.
@@ -108,7 +109,8 @@ class ModelRouter:
             from langchain_openai import ChatOpenAI
 
             base = "https://api.deepseek.com" if spec.provider == "deepseek" else None
-            api_key = os.getenv("DEEPSEEK_API_KEY" if spec.provider == "deepseek" else "OPENAI_API_KEY")
+            key_env = "DEEPSEEK_API_KEY" if spec.provider == "deepseek" else "OPENAI_API_KEY"
+            api_key = os.getenv(key_env)
             return ChatOpenAI(model=spec.model_id, base_url=base, api_key=api_key, **p)
         if spec.provider == "ollama":
             from langchain_ollama import ChatOllama

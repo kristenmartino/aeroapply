@@ -21,7 +21,8 @@ See: docs/HITL_AITL.md
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
+from typing import Any
 
 # Sources that must always be human-gated (fragile DOM / ban-prone / ToS-restricted).
 BROWSER_SOURCES: frozenset[str] = frozenset({"workday", "taleo", "linkedin", "custom"})
@@ -30,7 +31,7 @@ DEFAULT_MIN_ATS_SCORE = 0.90
 DEFAULT_MIN_AGENT_CONFIDENCE = 0.95
 
 
-class Route(str, Enum):
+class Route(StrEnum):
     AUTO_SUBMIT = "auto_submit"
     HUMAN = "escalate_to_human_review"
 
@@ -45,7 +46,7 @@ class SubmissionDecision:
         return self.route is Route.AUTO_SUBMIT
 
 
-def decide_submission(state: dict) -> SubmissionDecision:
+def decide_submission(state: dict[str, Any]) -> SubmissionDecision:
     """Evaluate all four gates and return an auditable decision.
 
     Expected state keys:
@@ -87,9 +88,9 @@ def decide_submission(state: dict) -> SubmissionDecision:
     return SubmissionDecision(route=route, reasons=reasons)
 
 
-def evaluate_submission_route(state: dict) -> str:
+def evaluate_submission_route(state: dict[str, Any]) -> str:
     """Thin string-returning wrapper for use as a LangGraph conditional edge."""
-    return decide_submission(state).route.value
+    return str(decide_submission(state).route.value)
 
 
 __all__ = ["Route", "SubmissionDecision", "decide_submission", "evaluate_submission_route"]

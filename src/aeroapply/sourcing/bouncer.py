@@ -13,7 +13,8 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
+from typing import Any
 
 try:  # geopy is optional at import time so unit tests can run without it
     from geopy.distance import geodesic
@@ -55,7 +56,7 @@ class SourcingBouncer:
         if geodesic is None:  # pragma: no cover
             return True  # geopy unavailable: don't false-drop in tests
         miles = geodesic(self.config.home_coords, (lat, lon)).miles
-        return miles <= self.config.max_commute_miles
+        return bool(miles <= self.config.max_commute_miles)
 
     @staticmethod
     def parse_max_salary(salary_text: str | None) -> int:
@@ -75,7 +76,7 @@ class SourcingBouncer:
         return max(values) if values else 0
 
     # --- main gate --------------------------------------------------------
-    def should_keep(self, job: dict) -> tuple[bool, str]:
+    def should_keep(self, job: dict[str, Any]) -> tuple[bool, str]:
         """Return (keep?, reason). Cheapest regex checks first to save compute."""
         # 1. Seniority / industry
         if self._bad_titles.search(job.get("title", "")):
@@ -98,8 +99,8 @@ class SourcingBouncer:
         posted = job.get("posted_at")
         if isinstance(posted, datetime):
             if posted.tzinfo is None:
-                posted = posted.replace(tzinfo=timezone.utc)
-            age = (datetime.now(timezone.utc) - posted).days
+                posted = posted.replace(tzinfo=UTC)
+            age = (datetime.now(UTC) - posted).days
             if age > self.config.max_age_days:
                 return False, f"drop: {age}d old (ghost job)"
 

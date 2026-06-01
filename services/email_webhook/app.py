@@ -40,7 +40,8 @@ LIFECYCLE_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("interview", ("interview", "schedule a call", "meet with", "availability")),
     ("questionnaire", ("assessment", "questionnaire", "skills test", "survey", "coding challenge")),
     ("offer", ("offer", "compensation package", "contract", "we'd like to extend")),
-    ("rejection", ("unfortunately", "not moving forward", "other candidates", "will not be proceeding")),
+    ("rejection", ("unfortunately", "not moving forward", "other candidates",
+                   "will not be proceeding")),
 ]
 HIGH_PRIORITY = {"interview", "offer", "questionnaire"}
 
