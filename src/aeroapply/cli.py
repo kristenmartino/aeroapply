@@ -1,5 +1,6 @@
-"""AeroApply CLI. Read-only sourcing is wired up (`source`, `rank`); there is no
-apply/submit/credential path — by design for this stage."""
+"""AeroApply CLI. Read-only sourcing + the Streamlit Kanban-lite are wired up
+(`source`, `rank`, `ui`); there is no apply/submit/credential path — by design for
+this stage."""
 
 from __future__ import annotations
 
@@ -43,6 +44,15 @@ def _cmd_rank(args: argparse.Namespace) -> None:
     print(f"({len(ranked)} icebox jobs)")
 
 
+def _cmd_ui(args: argparse.Namespace) -> None:
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    page = Path(__file__).parent / "ui" / "kanban.py"
+    subprocess.run([sys.executable, "-m", "streamlit", "run", str(page)], check=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="aeroapply", description="AeroApply daemon CLI")
     sub = parser.add_subparsers(dest="command")
@@ -57,7 +67,8 @@ def main() -> None:
     p_rank.set_defaults(func=_cmd_rank)
 
     sub.add_parser("schedule", help="run the WIP scheduler once (TODO)")
-    sub.add_parser("ui", help="launch the Streamlit Inbox/Ledger/Kanban (TODO)")
+    p_ui = sub.add_parser("ui", help="launch the Streamlit Kanban-lite over the Icebox")
+    p_ui.set_defaults(func=_cmd_ui)
 
     args = parser.parse_args()
     func = getattr(args, "func", None)

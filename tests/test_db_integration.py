@@ -63,8 +63,10 @@ def test_ingest_rank_promote_drop_roundtrip():
         c2 = repo.upsert_icebox(conn, user_id, [ai, ba])  # idempotent re-source
         assert c2.applications_inserted == 0 and c2.deduped == 2
 
-        by_title = {job["title"]: aid for aid, job, _ in repo.fetch_icebox(conn, user_id)}
+        icebox = repo.fetch_icebox(conn, user_id)
+        by_title = {job["title"]: aid for aid, job, _ in icebox}
         ai_id, ba_id = by_title[ai.title], by_title[ba.title]
+        assert all(job["company"] == "ZZTestCo" for _, job, _ in icebox)  # display field for Kanban-lite
 
         scores = {aid: sj.execution_priority for aid, sj in rank_icebox(conn, user_id, profile.ranking_weights)}
         assert scores[ai_id] > scores[ba_id]   # AI PM (title 1.0) outranks BA (0.6)

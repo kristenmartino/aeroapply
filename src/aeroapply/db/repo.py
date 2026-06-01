@@ -117,16 +117,18 @@ def upsert_icebox(
 def fetch_icebox(conn: psycopg.Connection, user_id: str) -> list[tuple[str, dict[str, Any], bool]]:
     rows = conn.execute(
         """SELECT a.id, j.title, j.location, j.remote_mode, j.posted_at,
-                  j.applicant_count, j.closing_date, a.manual_override
+                  j.applicant_count, j.closing_date, a.manual_override, j.company, j.url
            FROM application a JOIN job j ON j.id = a.job_id
            WHERE a.user_id = %s AND a.wip_status = 'icebox' AND a.status = 'sourced'""",
         (user_id,),
     ).fetchall()
     out: list[tuple[str, dict[str, Any], bool]] = []
     for r in rows:
+        # `company`/`url` are display-only (the UI Kanban shows them); ranking ignores them.
         job = {
             "title": r[1], "location": r[2], "remote_mode": r[3],
             "posted_at": r[4], "applicant_count": r[5], "closing_date": r[6],
+            "company": r[8], "url": r[9],
         }
         out.append((str(r[0]), job, bool(r[7])))
     return out
