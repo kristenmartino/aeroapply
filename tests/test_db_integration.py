@@ -81,3 +81,40 @@ def test_ingest_rank_promote_drop_roundtrip():
     finally:
         conn.rollback()
         conn.close()
+
+
+def test_snapshot_ranking_debug_persists_components():
+    from aeroapply.config import load_profile
+    from aeroapply.connectors.base import NormalizedPosting
+    from aeroapply.db import repo
+    from aeroapply.sourcing.scheduler import snapshot_ranking_debug
+
+    profile = load_profile(EXAMPLE)
+    ai = NormalizedPosting(source_key="greenhouse", external_id="zz3", company="ZZTestCo",
+                           title="ZZTEST AI Product Manager", remote_mode="remote", location="Remote")
+    ba = NormalizedPosting(source_key="greenhouse", external_id="zz4", company="ZZTestCo",
+                           title="ZZTEST Senior Business Analyst", remote_mode="remote", location="Remote")
+
+    conn = repo.connect(os.environ["DATABASE_URL"])
+    try:
+        user_id = repo.ensure_operator(conn, profile)
+        repo.upsert_icebox(conn, user_id, [ai, ba])
+
+        ranked = snapshot_ranking_debug(conn, user_id, profile.ranking_weights)
+        conn.commit()
+
+        by_scored = {aid: sj for aid, sj in ranked}
+        for app_id, scored in ranked:
+            row = conn.execute(
+                "SELECT ranking_debug FROM application WHERE id = %s", (app_id,)
+            ).fetchone()
+            stored = row[0]
+            assert stored is not None
+            for key, value in scored.components.items():
+                assert stored["components"][key] == pytest.approx(value)
+            assert stored["execution_priority"] == pytest.approx(scored.execution_priority)
+            assert stored["weights"]["title"] == pytest.approx(profile.ranking_weights.title)
+        assert set(by_scored) == {aid for aid, _ in ranked}
+    finally:
+        conn.rollback()
+        conn.close()

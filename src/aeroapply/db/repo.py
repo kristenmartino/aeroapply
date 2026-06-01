@@ -160,7 +160,17 @@ def drop(conn: psycopg.Connection, application_id: str) -> None:
     _event(conn, application_id, "drop")
 
 
+def set_ranking_debug(
+    conn: psycopg.Connection, application_id: str, payload: dict[str, Any]
+) -> None:
+    """Persist the ranking snapshot (components + execution_priority + weights) for one app."""
+    conn.execute(
+        "UPDATE application SET ranking_debug = %s, updated_at = now() WHERE id = %s",
+        (Jsonb(payload), application_id),
+    )
+
+
 __all__ = [
     "UpsertCounts", "connect", "ensure_operator", "upsert_icebox",
-    "fetch_icebox", "promote", "drop",
+    "fetch_icebox", "promote", "drop", "set_ranking_debug",
 ]

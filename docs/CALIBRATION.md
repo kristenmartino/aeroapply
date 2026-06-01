@@ -24,7 +24,7 @@ They optimize different objectives and must be tuned **separately**:
 Most already exists in the schema; the gaps are explicit below.
 
 Per **application**, persist the *decomposed* score and decision so they can be replayed:
-- `score_components` JSON: the five sub-scores (title/location/recency/competition/urgency) **at ranking time** — add to `application.blockers`-style JSON or a new `application.ranking_debug JSONB`.
+- `score_components` JSON: the five sub-scores (title/location/recency/competition/urgency) **at ranking time** — now persisted to `application.ranking_debug JSONB` (the `components` + `execution_priority` + `weights` snapshot written by `scheduler.snapshot_ranking_debug`, e.g. `aeroapply rank --persist`).
 - `ats_score`, `agent_confidence` (already columns), the route (`auto_submit` / `escalate_to_human_review`), and the gate `reasons` (from `decide_submission`).
 
 Per **operator review** (the ground-truth label for thresholds), emit `application_event` rows:
@@ -34,7 +34,7 @@ Per **operator review** (the ground-truth label for thresholds), emit `applicati
 
 Per **outcome** (the reward signal for weights), already captured via `status` transitions + `application_event`: `submitted → questionnaire → interview → offer → accepted | rejected`. Derive labels: `responded` (any employer reply), `interview`, `offer`.
 
-> **Gap to close (Sprint 3/6):** add the `ranking_debug` JSON write at queue time and the three `human_*` event types to the Inbox approve/edit/reject actions (EPIC-UI). Without them the analysis below has no labels.
+> **Gap to close (Sprint 3/6):** the `ranking_debug` JSON write now lands via `scheduler.snapshot_ranking_debug` (`aeroapply rank --persist`); what remains is the three `human_*` event types on the Inbox approve/edit/reject actions (EPIC-UI). Without those labels the analysis below has no ground truth.
 
 ## Phase 0 — Shadow / cold-start (secure-by-default)
 Run **review-default, auto-submit OFF** (`DEFAULT_MODE=review`). Every draft is human-reviewed, which *manufactures the labels*: each review is a data point on "would the gate have been right to auto-submit this?" Collect **≥150–200 reviewed applications** before trusting any threshold, and a few weeks of outcomes before touching weights. Do not skip this — it is the only unbiased window.
