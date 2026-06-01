@@ -1,9 +1,10 @@
 """Streamlit Kanban-lite over the Icebox — read + Promote/Drop curation only.
 
 Launched by `aeroapply ui`. Reads the Python-ranked Icebox (`ui.board.build_board` over
-`ranking.rank_jobs` / `profile.ranking_weights`) and writes only human curation events
-via `db.repo` (Promote -> manual_override; Drop -> user_rejected). There is deliberately
-NO submit / apply / credential code here. Spec: docs/UI_UX.md section 2.3.
+`ranking.rank_jobs` / `profile.ranking_weights`). Before each curation action it snapshots
+that card's `ranking_debug` (so the label is paired with its ranker features), then writes
+the human curation event via `db.repo` (Promote -> manual_override; Drop -> user_rejected).
+There is deliberately NO submit / apply / credential code here. Spec: docs/UI_UX.md section 2.3.
 
 A fresh connection is opened per Streamlit rerun (the script re-runs top-to-bottom on
 every widget interaction); the DB / ranking remain the source of truth, so closing the
@@ -15,12 +16,12 @@ from __future__ import annotations
 import psycopg
 import streamlit as st
 
-from aeroapply.config import get_profile, get_settings
+from aeroapply.config import RankingWeights, get_profile, get_settings
 from aeroapply.db import repo
-from aeroapply.ui.board import BoardRow, build_board
+from aeroapply.ui.board import BoardRow, build_board, snapshot_row
 
 
-def _render_card(conn: psycopg.Connection, row: BoardRow) -> None:
+def _render_card(conn: psycopg.Connection, row: BoardRow, weights: RankingWeights) -> None:
     comp = row.components
     with st.container(border=True):
         st.markdown(f"### {row.title or '(untitled role)'}")
@@ -41,6 +42,7 @@ def _render_card(conn: psycopg.Connection, row: BoardRow) -> None:
             disabled=row.manual_override,
             use_container_width=True,
         ):
+            snapshot_row(conn, row, weights)
             repo.promote(conn, row.application_id)
             conn.commit()
             st.rerun()
@@ -49,6 +51,7 @@ def _render_card(conn: psycopg.Connection, row: BoardRow) -> None:
             key=f"drop-{row.application_id}",
             use_container_width=True,
         ):
+            snapshot_row(conn, row, weights)
             repo.drop(conn, row.application_id)
             conn.commit()
             st.rerun()
@@ -74,7 +77,7 @@ def main() -> None:
             return
         st.write(f"**{len(board)}** job(s) in the Icebox")
         for row in board:
-            _render_card(conn, row)
+            _render_card(conn, row, profile.ranking_weights)
     finally:
         conn.close()
 
