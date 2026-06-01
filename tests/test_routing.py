@@ -1,4 +1,10 @@
-from aeroapply.graph.routing import Route, decide_submission, evaluate_submission_route
+from aeroapply.config import AutonomyCfg
+from aeroapply.graph.routing import (
+    Route,
+    build_gate_state,
+    decide_submission,
+    evaluate_submission_route,
+)
 
 BASE = {
     "portal_type": "greenhouse",
@@ -37,3 +43,53 @@ def test_requires_operator_optin():
 
 def test_wrapper_returns_route_string():
     assert evaluate_submission_route(BASE) == "auto_submit"
+
+
+# --- profile-driven gate (build_gate_state wires Profile.autonomy in) ---
+def _autonomy(**kw):
+    base = dict(
+        default_mode="review",
+        auto_submit_sources=["greenhouse"],
+        always_human_sources=["workday"],
+        min_ats_score=0.90,
+        min_agent_confidence=0.95,
+    )
+    base.update(kw)
+    return AutonomyCfg(**base)
+
+
+def test_gate_state_listed_api_source_auto_submits():
+    st = build_gate_state(_autonomy(), portal_type="greenhouse", ats_score=0.99,
+                          agent_confidence=0.99, auto_submit=True)
+    assert decide_submission(st).route is Route.AUTO_SUBMIT
+
+
+def test_gate_state_always_human_source_escalates():
+    st = build_gate_state(_autonomy(), portal_type="workday", ats_score=0.99,
+                          agent_confidence=0.99, auto_submit=True)
+    assert decide_submission(st).route is Route.HUMAN
+
+
+def test_gate_state_unlisted_source_escalates():
+    st = build_gate_state(_autonomy(), portal_type="lever", ats_score=0.99,
+                          agent_confidence=0.99, auto_submit=True)
+    assert decide_submission(st).route is Route.HUMAN
+
+
+def test_gate_state_review_mode_blocks_without_optin():
+    st = build_gate_state(_autonomy(default_mode="review"), portal_type="greenhouse",
+                          ats_score=0.99, agent_confidence=0.99, auto_submit=False)
+    assert decide_submission(st).route is Route.HUMAN
+
+
+def test_gate_state_auto_mode_defaults_optin():
+    st = build_gate_state(_autonomy(default_mode="auto"), portal_type="greenhouse",
+                          ats_score=0.99, agent_confidence=0.99, auto_submit=False)
+    assert decide_submission(st).route is Route.AUTO_SUBMIT
+
+
+def test_gate_state_profile_thresholds_flow_through():
+    st = build_gate_state(_autonomy(min_ats_score=0.99, min_agent_confidence=0.99),
+                          portal_type="greenhouse", ats_score=0.95,
+                          agent_confidence=0.96, auto_submit=True)
+    assert decide_submission(st).route is Route.HUMAN

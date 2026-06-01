@@ -7,6 +7,22 @@ on:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: aeroapply
+          POSTGRES_PASSWORD: aeroapply
+          POSTGRES_DB: aeroapply
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aeroapply"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://aeroapply:aeroapply@localhost:5432/aeroapply
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v6
@@ -16,7 +32,11 @@ jobs:
         run: uv run ruff check .
       - name: Type-check
         run: uv run mypy src
+      - name: Migrate (Postgres + pgvector)
+        run: uv run alembic upgrade head
       - name: Test
         run: uv run pytest -q
+        env:
+          RUN_DB_TESTS: "1"
   # NOTE: build-time cross-model peer review (author model != reviewer model) is a
-  # required gate enforced at PR time — see docs/PEER_REVIEW.md.
+  # required PR gate — see docs/PEER_REVIEW.md (#17 tracks CI enforcement, still open).

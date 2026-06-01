@@ -24,7 +24,7 @@ fi
 
 if ! gh repo view "$OWNER/$REPO" >/dev/null 2>&1; then
   gh repo create "$OWNER/$REPO" \
-    --private \
+    --public \
     --source=. \
     --remote=origin \
     --description "Autonomous, human-in-the-loop job-application daemon (LangGraph + Postgres/pgvector)"

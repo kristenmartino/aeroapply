@@ -116,7 +116,7 @@ def decrypt_password(ciphertext: str) -> str:
 
 1. Decrypted passwords are used only to fill a portal login field, then go out of scope. They are never logged, never echoed to the Streamlit UI in plaintext, never put in `application_event.payload`, and never returned by any API.
 2. The generated plaintext (Section 4) is likewise never logged. Loggers redact any field named `password`/`encrypted_password`; the audit log (`application_event`) records *that* a credential was created/used (event type + `credential_id`), never the secret.
-3. `AEROAPPLY_FERNET_KEY` and the KMS key are secrets-manager material, never in git (private repo; `.gitignore`).
+3. `AEROAPPLY_FERNET_KEY` and the KMS key are secrets-manager material, never in git (public-safe repo; `.gitignore`).
 4. Key rotation = decrypt-with-old, re-encrypt-with-new across the `portal_credentials` rows; Fernet supports `MultiFernet` for staged rotation.
 
 ### 5.1 Key rotation runbook

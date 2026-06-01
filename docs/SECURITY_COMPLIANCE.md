@@ -199,9 +199,9 @@ Retention: the audit log and `application`/`job` rows are retained for the opera
 
 ---
 
-## 8. Private repo / no real data in git
+## 8. Public-safe repo / no real data in git
 
-The repository is **private** (brief §1, §13). No real resume, credential, salary floor, address, or email may be committed. The PII boundary is structural:
+The repository is **public**, so it is treated as a **public-safe scaffold** (brief §1, §13): no real résumé, credential, salary floor, address, or email may be committed. Real operator data lives only in `.env` and `config/profile.yaml` (both gitignored). The PII boundary is structural:
 
 - Concrete personal values live in `config/profile.yaml` (git-ignored) and `.env` — the committed `config/profile.example.yaml` ships only illustrative defaults (`"Your Name"`, `you@example.com`, placeholder coordinates).
 - Docs refer to the operator at the **role/region level only** ("Senior BA/PM pivoting to AI PM, South-Florida/remote") — never by name or exact address.
@@ -217,11 +217,11 @@ The repository is **private** (brief §1, §13). No real resume, credential, sal
 | Fabricated EEO/visa/clearance answer | Low | Critical | `sensitive`/`field_type` flags force HITL; honesty gate hard-stops protected field classes; bias toward escalation on any weak match. |
 | LinkedIn/Workday account ban | Medium | High | Tier B always-HITL; no evasion; pacing via WIP limit + `source.rate_limit`; account creation human-gated; stop-on-block. |
 | Forged inbound webhook injects malicious OTP into a live thread | Low | High | Constant-time HMAC-SHA256 signature verify before any side effect; timestamp replay window; sender→active-application match; `email_event` audit. |
-| Credential leak (logs, UI, repo) | Low | Critical | Fernet-at-rest, KMS key in prod; ciphertext-only column; never logged/returned in plaintext; `.env` & `profile.yaml` git-ignored; private repo. |
+| Credential leak (logs, UI, repo) | Low | Critical | Fernet-at-rest, KMS key in prod; ciphertext-only column; never logged/returned in plaintext; `.env` & `profile.yaml` git-ignored; public-safe repo (no secrets committed). |
 | Secret committed to git | Low | High | `.example` files only; `.gitignore` for `.env`/`profile.yaml`/resumes; no secrets in docs or prompts. |
 | CAPTCHA/anti-bot encountered mid-submit | High | Medium | Documented non-goal: escalate and stop; never defeat. Frequency expected on Tier B, hence those are HITL anyway. |
 | Ghost/expired posting wastes tokens or triggers dead traffic | Medium | Low | `verify_open` HTTP-ping first → `closed_before_execution`; ghost-job bouncer drops postings older than 45 days. |
-| Stale/incorrect priority promotes a bad job | Low | Low | `v_icebox_ranked` computes `execution_priority` dynamically in SQL (never cached/stale); `manual_override` trump for operator control. |
+| Stale/incorrect priority promotes a bad job | Low | Low | `execution_priority` is computed live in Python (`ranking.py`) from `profile.ranking_weights`; `manual_override` trump for operator control. |
 | PII exposure via prod DB or vector store | Low | High | Single operator-owned Postgres (Railway prod / local Docker dev), not a shared backend; pgvector co-located so embeddings never leave it. |
 
 ---

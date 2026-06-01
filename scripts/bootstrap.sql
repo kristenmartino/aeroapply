@@ -254,8 +254,10 @@ CREATE INDEX idx_resume_chunk_embed ON resume_chunk USING hnsw (embedding vector
 CREATE INDEX idx_qa_history_embed   ON qa_history   USING hnsw (embedding vector_cosine_ops);
 
 -- =====================================================================
--- 7. RANKING VIEW  (execution_priority computed dynamically — never stale)
---    Supervisor reads the top-N from here to fill the WIP-limited queue.
+-- 7. RANKING VIEW  (DEBUG / FALLBACK ONLY — frozen weights)
+--    Canonical ranking is Python: src/aeroapply/sourcing/ranking.py reads
+--    profile.ranking_weights so weights are tunable live (no migration).
+--    This view hard-codes the same formula for ad-hoc SQL / debugging.
 -- =====================================================================
 CREATE OR REPLACE VIEW v_icebox_ranked AS
 SELECT
