@@ -33,3 +33,25 @@ def test_normalize_maps_greenhouse_fields():
     assert "Build AI products." in p.description     # HTML stripped
     assert len(p.fingerprint()) == 64
     assert p.posted_at is not None and p.posted_at.year == 2026
+
+
+def test_normalize_empty_board():
+    assert GreenhouseConnector("acme").normalize([]) == []
+
+
+def test_normalize_missing_location():
+    [p] = GreenhouseConnector("acme").normalize([{"id": 1, "title": "Staff Engineer"}])
+    assert p.location is None
+    assert p.remote_mode is None
+
+
+def test_normalize_null_id_yields_empty_external_id():
+    [p] = GreenhouseConnector("acme").normalize([{"id": None, "title": "Staff Engineer"}])
+    assert p.external_id == ""  # not the string "None"
+
+
+def test_invalid_board_token_rejected():
+    import pytest
+
+    with pytest.raises(ValueError):
+        GreenhouseConnector("acme/../../admin")

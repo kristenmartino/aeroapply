@@ -131,7 +131,7 @@ flowchart TB
   end
   BNC -->|survivors only| ICE[("job + application\nwip_status='icebox', status='sourced'")]
   BNC -. dropped, never written .-> X["/dev/null"]
-  ICE --> RANK["v_icebox_ranked\nexecution_priority (weighted CASE)"]
+  ICE --> RANK["ranking.py (Python)\nprofile.ranking_weights (live)"]
 ```
 
 The connector's job is to populate the fields the Bouncer and ranking view depend on:

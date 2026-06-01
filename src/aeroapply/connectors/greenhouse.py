@@ -4,9 +4,15 @@ Uses the public, unauthenticated `boards-api.greenhouse.io` endpoint (the same d
 that powers company career pages). No login, no ToS gray area, no apply path. This
 is the canonical Tier-A source for the first ingestion wedge.
 
-Note: Greenhouse exposes location as a free-text string with no lat/lon, so non-remote
-postings cannot be geo-fenced without a geocoder (future work) — the bouncer drops
-hybrid/onsite postings that lack coordinates. Remote roles flow through.
+Caveats / follow-ups:
+- Location is a free-text string with no lat/lon, so non-remote postings cannot be
+  geo-fenced without a geocoder (future work) — the bouncer drops hybrid/onsite
+  postings that lack coordinates. Remote roles flow through.
+- The public API exposes only `updated_at` (last-edit time), NOT a first-publication
+  date. It is mapped to `posted_at`, so the bouncer's 45-day ghost-job filter is
+  unreliable for this source: a stale posting with any recent edit reads as fresh.
+- No rate-limiting / retry here; callers must throttle across multiple boards. A 429
+  surfaces as `httpx.HTTPStatusError` via `raise_for_status()`.
 """
 
 from __future__ import annotations
@@ -23,6 +29,7 @@ from aeroapply.connectors.base import NormalizedPosting
 BOARDS_API = "https://boards-api.greenhouse.io/v1/boards/{token}/jobs"
 _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
+_TOKEN_RE = re.compile(r"[A-Za-z0-9_-]+")  # Greenhouse board tokens are alphanumeric slugs
 
 
 def _strip_html(raw: str) -> str:
@@ -55,6 +62,9 @@ class GreenhouseConnector:
     autonomy_tier = "A"
 
     def __init__(self, board_token: str, company: str | None = None, *, timeout: float = 15.0):
+        # Validate before URL interpolation — reject path-traversal / query injection.
+        if not _TOKEN_RE.fullmatch(board_token or ""):
+            raise ValueError(f"invalid Greenhouse board_token: {board_token!r}")
         self.board_token = board_token
         self.company = company or board_token
         self._timeout = timeout
@@ -81,7 +91,7 @@ class GreenhouseConnector:
         url = j.get("absolute_url")
         return NormalizedPosting(
             source_key=self.key,
-            external_id=str(j.get("id", "")),
+            external_id=str(j.get("id") or ""),  # null id -> "" (not the string "None")
             company=self.company,
             title=(j.get("title") or "").strip(),
             location=location,

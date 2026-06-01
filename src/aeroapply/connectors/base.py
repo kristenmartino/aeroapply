@@ -58,7 +58,12 @@ class NormalizedPosting(BaseModel):
 
 
 class SourceConnector(Protocol):
-    """Read-only source connector. No apply/submit surface by contract."""
+    """Read-only source connector. No apply/submit surface by contract.
+
+    v1 read-only simplification: `fetch()` replaces the async `search(profile)` /
+    `hydrate()` interface sketched (illustratively) in docs/CONNECTORS.md. The
+    profile-filtered async path is Sprint 2+.
+    """
 
     key: str
     kind: str           # 'api' | 'browser'

@@ -44,18 +44,19 @@ def ensure_operator(conn: psycopg.Connection, profile: Profile) -> str:
         (op.name, op.primary_email, op.agent_email, op.headline,
          op.home.lat, op.home.lon, op.work_auth),
     ).fetchone()
-    assert new is not None
+    if new is None:
+        raise RuntimeError("app_user INSERT ... RETURNING produced no row")
     return str(new[0])
 
 
 _JOB_INSERT = """
-INSERT INTO job (external_id, company, title, location, remote_mode, lat, lon,
-                 salary_min, salary_max, currency, description, url, portal_url,
+INSERT INTO job (source_id, external_id, company, title, location, remote_mode, lat, lon,
+                 salary_min, salary_max, currency, description, requirements, url, portal_url,
                  portal_type, posted_at, closing_date, applicant_count, fingerprint, raw)
-VALUES (%(external_id)s, %(company)s, %(title)s, %(location)s, %(remote_mode)s, %(lat)s, %(lon)s,
-        %(salary_min)s, %(salary_max)s, %(currency)s, %(description)s, %(url)s, %(portal_url)s,
-        %(portal_type)s, %(posted_at)s, %(closing_date)s, %(applicant_count)s,
-        %(fingerprint)s, %(raw)s)
+VALUES (%(source_id)s, %(external_id)s, %(company)s, %(title)s, %(location)s, %(remote_mode)s,
+        %(lat)s, %(lon)s, %(salary_min)s, %(salary_max)s, %(currency)s, %(description)s,
+        %(requirements)s, %(url)s, %(portal_url)s, %(portal_type)s, %(posted_at)s,
+        %(closing_date)s, %(applicant_count)s, %(fingerprint)s, %(raw)s)
 ON CONFLICT (fingerprint) DO NOTHING
 RETURNING id
 """
@@ -66,16 +67,25 @@ def upsert_icebox(
     user_id: str,
     survivors: list[NormalizedPosting],
     search_profile_id: str | None = None,
+    source_id: str | None = None,
 ) -> UpsertCounts:
+    """Persist already-bouncer-filtered survivors as job + icebox application rows.
+
+    Callers MUST pass bouncer-filtered survivors (i.e. `plan_ingest(...).survivors`);
+    this function does NOT filter. `source_id` is the optional FK to the `source`
+    registry (NULL until that table is seeded — see #14 follow-up).
+    """
     counts = UpsertCounts()
     for p in survivors:
         fp = p.fingerprint()
         params: dict[str, Any] = {
+            "source_id": source_id,
             "external_id": p.external_id, "company": p.company, "title": p.title,
             "location": p.location, "remote_mode": p.remote_mode, "lat": p.lat, "lon": p.lon,
             "salary_min": p.salary_min, "salary_max": p.salary_max, "currency": p.currency,
-            "description": p.description, "url": p.url, "portal_url": p.portal_url,
-            "portal_type": p.portal_type, "posted_at": p.posted_at, "closing_date": p.closing_date,
+            "description": p.description, "requirements": Jsonb(p.requirements),
+            "url": p.url, "portal_url": p.portal_url, "portal_type": p.portal_type,
+            "posted_at": p.posted_at, "closing_date": p.closing_date,
             "applicant_count": p.applicant_count, "fingerprint": fp, "raw": Jsonb(p.raw),
         }
         row = conn.execute(_JOB_INSERT, params).fetchone()
@@ -86,7 +96,10 @@ def upsert_icebox(
             existing = conn.execute(
                 "SELECT id FROM job WHERE fingerprint = %s", (fp,)
             ).fetchone()
-            assert existing is not None
+            if existing is None:
+                raise RuntimeError(
+                    f"job fingerprint {fp!r} vanished between insert-conflict and select"
+                )
             job_id = existing[0]
         app = conn.execute(
             """INSERT INTO application (user_id, job_id, search_profile_id, wip_status, status)
@@ -136,8 +149,10 @@ def promote(conn: psycopg.Connection, application_id: str) -> None:
 
 
 def drop(conn: psycopg.Connection, application_id: str) -> None:
+    # user_rejected is terminal: also retire the scheduler state out of the Icebox.
     conn.execute(
-        "UPDATE application SET status = 'user_rejected', updated_at = now() WHERE id = %s",
+        """UPDATE application SET status = 'user_rejected', wip_status = 'done', updated_at = now()
+           WHERE id = %s""",
         (application_id,),
     )
     _event(conn, application_id, "drop")
