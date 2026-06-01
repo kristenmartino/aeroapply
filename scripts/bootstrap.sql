@@ -169,6 +169,7 @@ CREATE TABLE application (
     ats_score        NUMERIC(5,4),                  -- ATS-Critic keyword coverage, 0-1 scale (project-wide)
     agent_confidence NUMERIC(5,4),                  -- 0-1; gates auto-submit
     match_score      NUMERIC(5,2),
+    ranking_debug    JSONB,                         -- #80: snapshot of rank_jobs components + execution_priority (+ weights) at rank/queue time
 
     -- Routing / state
     wip_status       VARCHAR(20) NOT NULL DEFAULT 'icebox'

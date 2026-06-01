@@ -32,16 +32,22 @@ def _cmd_source(args: argparse.Namespace) -> None:
 def _cmd_rank(args: argparse.Namespace) -> None:
     from aeroapply.config import get_profile, get_settings
     from aeroapply.db import repo
-    from aeroapply.sourcing.scheduler import rank_icebox
+    from aeroapply.sourcing.scheduler import rank_icebox, snapshot_ranking_debug
 
     settings = get_settings()
     profile = get_profile()
     with repo.connect(settings.database_url) as conn:
         user_id = repo.ensure_operator(conn, profile)
-        ranked = rank_icebox(conn, user_id, profile.ranking_weights)
+        if args.persist:
+            # The with-block commits on exit (like _cmd_source).
+            ranked = snapshot_ranking_debug(conn, user_id, profile.ranking_weights)
+        else:
+            ranked = rank_icebox(conn, user_id, profile.ranking_weights)
     for app_id, scored in ranked[: args.limit]:
         print(f"{scored.execution_priority:6.3f}  {app_id}  {scored.components}")
     print(f"({len(ranked)} icebox jobs)")
+    if args.persist:
+        print(f"persisted ranking_debug for {len(ranked)} icebox rows")
 
 
 def _cmd_ui(args: argparse.Namespace) -> None:
@@ -64,6 +70,8 @@ def main() -> None:
 
     p_rank = sub.add_parser("rank", help="print the Python-ranked Icebox")
     p_rank.add_argument("--limit", type=int, default=20)
+    p_rank.add_argument("--persist", action="store_true",
+                        help="snapshot ranking_debug for the Icebox (writes); default is read-only")
     p_rank.set_defaults(func=_cmd_rank)
 
     sub.add_parser("schedule", help="run the WIP scheduler once (TODO)")
