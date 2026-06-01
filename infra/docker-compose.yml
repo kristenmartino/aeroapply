@@ -13,8 +13,8 @@ services:
       - "5432:5432"
     volumes:
       - aeroapply_pgdata:/var/lib/postgresql/data
-      # Auto-run the canonical schema on first init:
-      - ../scripts/bootstrap.sql:/docker-entrypoint-initdb.d/01_bootstrap.sql:ro
+      # Schema is applied via Alembic (`uv run alembic upgrade head`), not docker
+      # auto-init, so there is one apply path. scripts/bootstrap.sql is the reference.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U aeroapply -d aeroapply"]
       interval: 5s

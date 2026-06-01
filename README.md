@@ -33,12 +33,13 @@ Full design: **[`docs/PROJECT_BRIEF.md`](docs/PROJECT_BRIEF.md)** is the canonic
 cp infra/.env.example .env            # fill in keys; generate a Fernet key (see the file)
 cp config/profile.example.yaml config/profile.yaml   # your real filters/PII live here (gitignored)
 
-# 1. Postgres + pgvector (bootstrap.sql auto-applies on first init)
+# 1. Postgres + pgvector
 docker compose -f infra/docker-compose.yml up -d
 
-# 2. Install + verify
+# 2. Install, apply schema, verify
 uv sync --dev
-uv run pytest -q                      # 12 passing: bouncer + submission-gate logic
+uv run alembic upgrade head            # create the schema (single source of truth)
+uv run pytest -q                       # 16 passing: bouncer, gate, config
 uv run ruff check . && uv run mypy src
 
 # 3. (scaffolds — wired up across Sprints 1–6)
@@ -73,6 +74,7 @@ uv run uvicorn services.email_webhook.app:app   # inbound-email webhook (prod: R
 | [CONNECTORS](docs/CONNECTORS.md) · [MODEL_ROUTING](docs/MODEL_ROUTING.md) | Source/apply connectors, model registry |
 | [HITL_AITL](docs/HITL_AITL.md) · [UI_UX](docs/UI_UX.md) | Autonomy gate, Streamlit dual-view |
 | [SECURITY_COMPLIANCE](docs/SECURITY_COMPLIANCE.md) · [PEER_REVIEW](docs/PEER_REVIEW.md) | Risk/honesty, build-time review |
+| [CALIBRATION](docs/CALIBRATION.md) | Empirically tuning weights + autonomy thresholds |
 | [ROADMAP](docs/ROADMAP.md) · [SPRINTS](docs/SPRINTS.md) · [adr/](docs/adr/) | Plan + decision records |
 
 ## Security & honesty
