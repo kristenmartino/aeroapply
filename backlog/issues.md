@@ -265,13 +265,13 @@ Implement the dedupe key: a deterministic SHA-256 fingerprint over normalized (c
 - **Labels:** `type:test`, `area:sourcing`, `P0`
 - **Depends on:** “Icebox writes: persist survivors as jobs + icebox applications”, “Validate and harden v_icebox_ranked execution-priority view”
 
-Author an integration test that runs the full Sprint-1 slice against the Docker Postgres: fake connectors emit mixed postings, the SourcingBouncer drops junk, survivors are deduped and written as icebox applications, and v_icebox_ranked returns them in the expected priority order. This is the Sprint-1 exit verification (ranked jobs flow into the Icebox).
+Author an integration test that runs the full Sprint-1 slice against the Docker Postgres: fake connectors emit mixed postings, the SourcingBouncer drops junk, survivors are deduped and written as icebox applications, and `ranking.rank_jobs` returns them in the expected priority order. This is the Sprint-1 exit verification (ranked jobs flow into the Icebox).
 
 **Acceptance criteria**
 
 - [ ] Test seeds a mix of keep/drop postings through the real bouncer and Icebox-write path
 - [ ] Dropped postings never appear as jobs/applications; survivors appear exactly once
-- [ ] v_icebox_ranked returns survivors ordered by execution_priority with a promoted row on top
+- [ ] `ranking.rank_jobs` returns survivors ordered by execution_priority with a promoted row on top
 - [ ] The test runs in CI against the Postgres service container
 - [ ] Assertions cover dedupe, bouncer reasons, and ranking order
 
@@ -402,7 +402,7 @@ _Implement the two-tier backlog: the v_icebox_ranked execution-priority view, th
 - **Labels:** `type:test`, `area:sourcing`, `P0`
 - **Depends on:** “Apply bootstrap.sql as the initial Alembic migration”, “Icebox writes: persist survivors as jobs + icebox applications”
 
-Verify the v_icebox_ranked view matches the canonical execution-priority formula (manual_override +100 trump; title 35%; location 25%; recency 20%; competition 10%; urgency 10%) and behaves correctly on NULL applicant_count/closing_date. Add coverage that locks the weighting and ordering so future schema edits can't silently drift the ranking.
+Verify the v_icebox_ranked view — the frozen-weight debug/fallback to the canonical Python ranker (`ranking.rank_jobs` in `src/aeroapply/sourcing/ranking.py`, which reads `profile.ranking_weights` live) — stays in sync with that execution-priority formula (manual_override +100 trump; title 35%; location 25%; recency 20%; competition 10%; urgency 10%) and behaves correctly on NULL applicant_count/closing_date. Add coverage that locks the weighting and ordering so future schema edits can't silently drift the fallback from the canonical Python ranking.
 
 **Acceptance criteria**
 
@@ -418,11 +418,11 @@ Verify the v_icebox_ranked view matches the canonical execution-priority formula
 - **Labels:** `type:feature`, `area:graph`, `P0`
 - **Depends on:** “Validate and harden v_icebox_ranked execution-priority view”
 
-Implement the Supervisor/Scheduler that runs on a schedule (e.g., every few hours), reads v_icebox_ranked, and promotes the top-N (default 5) icebox applications to wip_status='queued', status='queued'. It enforces the WIP limit so only queued jobs ever consume frontier tokens, and it is idempotent under repeated runs.
+Implement the Supervisor/Scheduler that runs on a schedule (e.g., every few hours), reads the Python ranker (`ranking.rank_jobs` over `profile.ranking_weights`), and promotes the top-N (default 5) icebox applications to wip_status='queued', status='queued'. It enforces the WIP limit so only queued jobs ever consume frontier tokens, and it is idempotent under repeated runs.
 
 **Acceptance criteria**
 
-- [ ] Scheduler selects the top-N from v_icebox_ranked and flips them to wip_status='queued', status='queued'
+- [ ] Scheduler selects the top-N from the Python ranker (`ranking.rank_jobs` over `profile.ranking_weights`) and flips them to wip_status='queued', status='queued'
 - [ ] N (WIP limit) is configurable and defaults to 5
 - [ ] Active WIP is counted so the queue is topped up to N rather than over-filled
 - [ ] Promotion is idempotent: re-running without new capacity promotes nothing
@@ -1050,7 +1050,7 @@ Build the Kanban board that columns applications by status/wip_status and lets t
 **Acceptance criteria**
 
 - [ ] Kanban renders applications grouped by pipeline stage (status/wip_status columns)
-- [ ] Promote sets manual_override=TRUE so the row jumps to the top of v_icebox_ranked
+- [ ] Promote sets manual_override=TRUE so the row jumps to the top of the Python ranking (manual_override +100 trump)
 - [ ] Drop sets status='user_rejected' and removes it from the icebox ranking
 - [ ] Curation actions write human-actor application_events
 - [ ] Promote/Drop changes are reflected in the next scheduler promotion cycle
