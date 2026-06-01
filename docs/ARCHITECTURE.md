@@ -12,7 +12,7 @@ AeroApply is **not** a CLI you invoke per job. It is a persistent, always-on pro
 2. **Execution Graph** — a WIP-limited LangGraph state machine that runs frontier models only on jobs the Supervisor has promoted. This is where tokens get spent: verify, tailor, draft, answer, route, submit, track.
 3. **Email-Event Service** — a FastAPI app (the only inbound HTTP surface) that turns the operator's inbox into control signals: an OTP webhook that **wakes a paused browser thread**, and an hourly IMAP poller that classifies lifecycle mail and updates `application.status`.
 
-The three subsystems are decoupled by the database, not by RPC. The Sourcing Daemon never calls the Execution Graph directly — it writes `application` rows at `wip_status='icebox'`; the Supervisor reads them back through `v_icebox_ranked`. The Email-Event Service never reaches into graph memory except through the one sanctioned door, `graph.aupdate_state(...)`. Postgres is the integration bus, the checkpoint store, and the vector store at once.
+The three subsystems are decoupled by the database, not by RPC. The Sourcing Daemon never calls the Execution Graph directly — it writes `application` rows at `wip_status='icebox'`; the Supervisor reads and ranks them via the Python ranker (`ranking.rank_jobs`). The Email-Event Service never reaches into graph memory except through the one sanctioned door, `graph.aupdate_state(...)`. Postgres is the integration bus, the checkpoint store, and the vector store at once.
 
 ```mermaid
 flowchart TB
@@ -94,7 +94,7 @@ The two peer-review systems must not be conflated: `tailor`'s critic loop is **r
 
 ## 3. Supervisor + WIP scheduler, and the two-tier backlog
 
-The Supervisor is an `asyncio` task that wakes every `cycle_minutes` (default **180**), reads the top-N rows from `v_icebox_ranked`, and promotes the top `wip_limit` (default **5**) from `wip_status='icebox'` to `'queued'`, then spawns an Execution Graph worker per promoted application. This is the **only** place Icebox volume converts into frontier-model spend.
+The Supervisor is an `asyncio` task that wakes every `cycle_minutes` (default **180**), ranks Icebox rows via `ranking.rank_jobs(profile.ranking_weights)` and promotes the top `wip_limit` (default **5**) from `wip_status='icebox'` to `'queued'`, then spawns an Execution Graph worker per promoted application. This is the **only** place Icebox volume converts into frontier-model spend.
 
 ```python
 # Supervisor loop (asyncio; cycle_minutes / wip_limit from config/profile.yaml)

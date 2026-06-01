@@ -39,11 +39,13 @@ docker compose -f infra/docker-compose.yml up -d
 # 2. Install, apply schema, verify
 uv sync --dev
 uv run alembic upgrade head            # create the schema (single source of truth)
-uv run pytest -q                       # 16 passing: bouncer, gate, config
+uv run pytest -q                       # unit + DB-integration suite
 uv run ruff check . && uv run mypy src
 
-# 3. (scaffolds — wired up across Sprints 1–6)
-uv run aeroapply source               # sourcing daemon → Icebox
+# 3. Read-only sourcing (works today): ingest a Greenhouse board → Bouncer → Icebox, then rank
+uv run aeroapply source --board <greenhouse_token>   # fetch → bouncer → icebox (read-only)
+uv run aeroapply rank                                # Python-ranked Icebox (rank_jobs, not the view)
+# (scaffolds — wired up across later sprints)
 uv run aeroapply schedule             # WIP scheduler → execution graph
 uv run aeroapply ui                   # Streamlit Inbox/Ledger/Kanban
 uv run uvicorn services.email_webhook.app:app   # inbound-email webhook (prod: Railway)
