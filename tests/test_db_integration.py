@@ -101,7 +101,8 @@ def test_snapshot_ranking_debug_persists_components():
         repo.upsert_icebox(conn, user_id, [ai, ba])
 
         ranked = snapshot_ranking_debug(conn, user_id, profile.ranking_weights)
-        conn.commit()
+        # No commit: the same connection reads its own uncommitted writes, so the
+        # finally: conn.rollback() cleans up all inserted rows (DB-test isolation).
 
         by_scored = {aid: sj for aid, sj in ranked}
         for app_id, scored in ranked:
