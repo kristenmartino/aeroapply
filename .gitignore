@@ -1,0 +1,42 @@
+# Secrets & operator data — NEVER commit
+.env
+.env.*
+!.env.example
+config/profile.yaml
+*.key
+*.pem
+secrets/
+data/
+*.resume.json
+*.pdf
+*.docx
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.uv/
+*.egg-info/
+dist/
+build/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# LangGraph / local state
+*.sqlite
+*.db
+.langgraph_api/
+
+# Playwright
+playwright-report/
+.playwright/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+*.log

@@ -1,0 +1,25 @@
+# Local dev backend: Postgres 16 + pgvector. Mirrors the Railway prod Postgres.
+#   docker compose -f infra/docker-compose.yml up -d
+#   psql postgresql://aeroapply:aeroapply@localhost:5432/aeroapply -f scripts/bootstrap.sql
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: aeroapply-db
+    environment:
+      POSTGRES_USER: aeroapply
+      POSTGRES_PASSWORD: aeroapply
+      POSTGRES_DB: aeroapply
+    ports:
+      - "5432:5432"
+    volumes:
+      - aeroapply_pgdata:/var/lib/postgresql/data
+      # Auto-run the canonical schema on first init:
+      - ../scripts/bootstrap.sql:/docker-entrypoint-initdb.d/01_bootstrap.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aeroapply -d aeroapply"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  aeroapply_pgdata:
