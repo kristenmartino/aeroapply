@@ -1,0 +1,902 @@
+[
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/1",
+    "title": "[Epic] Foundations: Repo, Infra, Config & Model Router",
+    "epic": "EPIC-FND",
+    "labels": [
+      "type:epic"
+    ]
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/2",
+    "title": "[Epic] Sourcing Daemon, SourcingBouncer & Connectors",
+    "epic": "EPIC-SRC",
+    "labels": [
+      "type:epic"
+    ]
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/3",
+    "title": "[Epic] Icebox, Ranking View & WIP Scheduler",
+    "epic": "EPIC-ICE",
+    "labels": [
+      "type:epic"
+    ]
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/4",
+    "title": "[Epic] LangGraph Supervisor & Execution Graph Core",
+    "epic": "EPIC-GRAPH",
+    "labels": [
+      "type:epic"
+    ]
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/5",
+    "title": "[Epic] Tailoring Loop, Cover Letters & Embeddings",
+    "epic": "EPIC-TAILOR",
+    "labels": [
+      "type:epic"
+    ]
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/6",
+    "title": "[Epic] AITL Question Answering, Routing & HITL Gate",
+    "epic": "EPIC-AITL",
+    "labels": [
+      "type:epic"
+    ]
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/7",
+    "title": "[Epic] Apply Connectors, Credential Vault & Submission",
+    "epic": "EPIC-APPLY",
+    "labels": [
+      "type:epic"
+    ]
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/8",
+    "title": "[Epic] Email-Event Service: Webhook OTP Injection & IMAP Lifecycle",
+    "epic": "EPIC-EMAIL",
+    "labels": [
+      "type:epic"
+    ]
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/9",
+    "title": "[Epic] Streamlit UI, Security/Compliance & Production Hardening",
+    "epic": "EPIC-UI",
+    "labels": [
+      "type:epic"
+    ]
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/10",
+    "title": "Scaffold aeroapply repo, packaging (uv/3.12), and tooling baseline",
+    "epic": "EPIC-FND",
+    "labels": [
+      "type:infra",
+      "area:infra",
+      "P0"
+    ],
+    "sprint": 1,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/11",
+    "title": "Docker Compose dev stack: Postgres 16 + pgvector",
+    "epic": "EPIC-FND",
+    "labels": [
+      "type:infra",
+      "area:infra",
+      "P0"
+    ],
+    "sprint": 1,
+    "estimate": "S"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/12",
+    "title": "Apply bootstrap.sql as the initial Alembic migration",
+    "epic": "EPIC-FND",
+    "labels": [
+      "type:infra",
+      "area:infra",
+      "P0"
+    ],
+    "sprint": 1,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/13",
+    "title": "Pydantic config loader for profile.yaml + .env (PII boundary)",
+    "epic": "EPIC-FND",
+    "labels": [
+      "type:feature",
+      "area:infra",
+      "P0"
+    ],
+    "sprint": 1,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/14",
+    "title": "Async Postgres connection pool + DB access layer",
+    "epic": "EPIC-FND",
+    "labels": [
+      "type:feature",
+      "area:infra",
+      "P0"
+    ],
+    "sprint": 1,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/15",
+    "title": "Model-router skeleton with provider abstraction and per-node overrides",
+    "epic": "EPIC-FND",
+    "labels": [
+      "type:feature",
+      "area:infra",
+      "P0"
+    ],
+    "sprint": 1,
+    "estimate": "L"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/16",
+    "title": "CI pipeline: lint, type-check, tests on every PR",
+    "epic": "EPIC-FND",
+    "labels": [
+      "type:infra",
+      "area:infra",
+      "P0"
+    ],
+    "sprint": 1,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/17",
+    "title": "Cross-model build-time review gate in CI",
+    "epic": "EPIC-FND",
+    "labels": [
+      "type:infra",
+      "area:infra",
+      "P1"
+    ],
+    "sprint": 1,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/18",
+    "title": "Source connector interface + registry seeded from source table",
+    "epic": "EPIC-SRC",
+    "labels": [
+      "type:feature",
+      "area:connectors",
+      "P0"
+    ],
+    "sprint": 1,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/19",
+    "title": "Greenhouse API connector (Tier A)",
+    "epic": "EPIC-SRC",
+    "labels": [
+      "type:feature",
+      "area:connectors",
+      "P0"
+    ],
+    "sprint": 1,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/20",
+    "title": "Lever API connector (Tier A)",
+    "epic": "EPIC-SRC",
+    "labels": [
+      "type:feature",
+      "area:connectors",
+      "P0"
+    ],
+    "sprint": 1,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/21",
+    "title": "Ashby API connector (Tier A)",
+    "epic": "EPIC-SRC",
+    "labels": [
+      "type:feature",
+      "area:connectors",
+      "P0"
+    ],
+    "sprint": 1,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/22",
+    "title": "DOM-portal connector stubs (Workday, LinkedIn) with tier metadata",
+    "epic": "EPIC-SRC",
+    "labels": [
+      "type:feature",
+      "area:connectors",
+      "P2"
+    ],
+    "sprint": 1,
+    "estimate": "S"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/23",
+    "title": "SourcingBouncer edge filters (drop before DB write)",
+    "epic": "EPIC-SRC",
+    "labels": [
+      "type:feature",
+      "area:sourcing",
+      "P0"
+    ],
+    "sprint": 1,
+    "estimate": "L"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/24",
+    "title": "Dedupe fingerprinting for jobs",
+    "epic": "EPIC-SRC",
+    "labels": [
+      "type:feature",
+      "area:sourcing",
+      "P0"
+    ],
+    "sprint": 1,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/25",
+    "title": "Icebox writes: persist survivors as jobs + icebox applications",
+    "epic": "EPIC-SRC",
+    "labels": [
+      "type:feature",
+      "area:sourcing",
+      "P0"
+    ],
+    "sprint": 1,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/26",
+    "title": "Always-on sourcing daemon loop with per-source pacing",
+    "epic": "EPIC-SRC",
+    "labels": [
+      "type:feature",
+      "area:sourcing",
+      "P1"
+    ],
+    "sprint": 1,
+    "estimate": "L"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/27",
+    "title": "Validate and harden v_icebox_ranked execution-priority view",
+    "epic": "EPIC-ICE",
+    "labels": [
+      "type:test",
+      "area:sourcing",
+      "P0"
+    ],
+    "sprint": 1,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/28",
+    "title": "WIP-limited Supervisor/Scheduler promotes top-N icebox to queued",
+    "epic": "EPIC-ICE",
+    "labels": [
+      "type:feature",
+      "area:graph",
+      "P0"
+    ],
+    "sprint": 1,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/29",
+    "title": "Scheduler trigger: cadence runner for promotion cycles",
+    "epic": "EPIC-ICE",
+    "labels": [
+      "type:feature",
+      "area:graph",
+      "P2"
+    ],
+    "sprint": 2,
+    "estimate": "S"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/30",
+    "title": "LangGraph state schema + Postgres checkpointer setup",
+    "epic": "EPIC-GRAPH",
+    "labels": [
+      "type:feature",
+      "area:graph",
+      "P0"
+    ],
+    "sprint": 2,
+    "estimate": "L"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/31",
+    "title": "Supervisor graph wiring + run/thread linkage",
+    "epic": "EPIC-GRAPH",
+    "labels": [
+      "type:feature",
+      "area:graph",
+      "P0"
+    ],
+    "sprint": 2,
+    "estimate": "L"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/32",
+    "title": "verify_open node: stale-job HTTP guard",
+    "epic": "EPIC-GRAPH",
+    "labels": [
+      "type:feature",
+      "area:graph",
+      "P0"
+    ],
+    "sprint": 2,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/33",
+    "title": "select_resume node: choose best resume variant",
+    "epic": "EPIC-GRAPH",
+    "labels": [
+      "type:feature",
+      "area:graph",
+      "P1"
+    ],
+    "sprint": 2,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/34",
+    "title": "Resume/Q&A embedding + pgvector retrieval layer",
+    "epic": "EPIC-TAILOR",
+    "labels": [
+      "type:feature",
+      "area:graph",
+      "P0"
+    ],
+    "sprint": 2,
+    "estimate": "L"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/35",
+    "title": "Generator node: draft tailored resume (Opus, drafting class)",
+    "epic": "EPIC-TAILOR",
+    "labels": [
+      "type:feature",
+      "area:graph",
+      "P0"
+    ],
+    "sprint": 2,
+    "estimate": "L"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/36",
+    "title": "ATS-Critic node: deterministic keyword-coverage scoring",
+    "epic": "EPIC-TAILOR",
+    "labels": [
+      "type:feature",
+      "area:graph",
+      "P0"
+    ],
+    "sprint": 2,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/37",
+    "title": "Generator<->ATS-Critic cyclic subgraph with max-iteration cap",
+    "epic": "EPIC-TAILOR",
+    "labels": [
+      "type:feature",
+      "area:graph",
+      "P0"
+    ],
+    "sprint": 2,
+    "estimate": "L"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/38",
+    "title": "cover_letter node: generate when required",
+    "epic": "EPIC-TAILOR",
+    "labels": [
+      "type:feature",
+      "area:graph",
+      "P1"
+    ],
+    "sprint": 3,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/39",
+    "title": "answer_questions node: AITL retrieval from qa_history",
+    "epic": "EPIC-AITL",
+    "labels": [
+      "type:feature",
+      "area:graph",
+      "P0"
+    ],
+    "sprint": 3,
+    "estimate": "L"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/40",
+    "title": "Honesty rule: never fabricate EEO/visa/clearance/self-ID answers",
+    "epic": "EPIC-AITL",
+    "labels": [
+      "type:feature",
+      "area:security",
+      "P0"
+    ],
+    "sprint": 3,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/41",
+    "title": "evaluate_submission_route conditional edge (tiered-autonomy gate)",
+    "epic": "EPIC-AITL",
+    "labels": [
+      "type:feature",
+      "area:graph",
+      "P0"
+    ],
+    "sprint": 3,
+    "estimate": "L"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/42",
+    "title": "pause_and_checkpoint HITL node + resume contract",
+    "epic": "EPIC-AITL",
+    "labels": [
+      "type:feature",
+      "area:graph",
+      "P0"
+    ],
+    "sprint": 3,
+    "estimate": "L"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/43",
+    "title": "Fernet credential vault: encrypt/decrypt domain-keyed logins",
+    "epic": "EPIC-APPLY",
+    "labels": [
+      "type:feature",
+      "area:security",
+      "P0"
+    ],
+    "sprint": 4,
+    "estimate": "L"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/44",
+    "title": "Tier-A API submission connector (Greenhouse/Lever/Ashby)",
+    "epic": "EPIC-APPLY",
+    "labels": [
+      "type:feature",
+      "area:connectors",
+      "P0"
+    ],
+    "sprint": 4,
+    "estimate": "L"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/45",
+    "title": "Playwright submit for one DOM portal (Tier B, HITL-gated)",
+    "epic": "EPIC-APPLY",
+    "labels": [
+      "type:feature",
+      "area:connectors",
+      "P1"
+    ],
+    "sprint": 4,
+    "estimate": "L"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/46",
+    "title": "account_node: portal account creation with credential storage",
+    "epic": "EPIC-APPLY",
+    "labels": [
+      "type:feature",
+      "area:connectors",
+      "P1"
+    ],
+    "sprint": 4,
+    "estimate": "L"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/47",
+    "title": "submit + track nodes: persist outcome and lifecycle entry state",
+    "epic": "EPIC-APPLY",
+    "labels": [
+      "type:feature",
+      "area:graph",
+      "P0"
+    ],
+    "sprint": 4,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/48",
+    "title": "FastAPI inbound-email webhook with provider signature verification",
+    "epic": "EPIC-EMAIL",
+    "labels": [
+      "type:feature",
+      "area:email",
+      "P0"
+    ],
+    "sprint": 5,
+    "estimate": "L"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/49",
+    "title": "OTP extraction + injection via aupdate_state into paused thread",
+    "epic": "EPIC-EMAIL",
+    "labels": [
+      "type:feature",
+      "area:email",
+      "P0"
+    ],
+    "sprint": 5,
+    "estimate": "L"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/50",
+    "title": "IMAP poller + LLM lifecycle classifier",
+    "epic": "EPIC-EMAIL",
+    "labels": [
+      "type:feature",
+      "area:email",
+      "P0"
+    ],
+    "sprint": 5,
+    "estimate": "L"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/51",
+    "title": "Lifecycle status state machine: map classifications to application.status",
+    "epic": "EPIC-EMAIL",
+    "labels": [
+      "type:feature",
+      "area:email",
+      "P0"
+    ],
+    "sprint": 5,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/52",
+    "title": "Forward-to-primary inbox via aiosmtplib BackgroundTasks",
+    "epic": "EPIC-EMAIL",
+    "labels": [
+      "type:feature",
+      "area:email",
+      "P1"
+    ],
+    "sprint": 5,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/53",
+    "title": "Streamlit app shell with Inbox / Ledger / Kanban navigation",
+    "epic": "EPIC-UI",
+    "labels": [
+      "type:feature",
+      "area:ui",
+      "P1"
+    ],
+    "sprint": 3,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/54",
+    "title": "Inbox view: review/approve/edit/drop paused applications",
+    "epic": "EPIC-UI",
+    "labels": [
+      "type:feature",
+      "area:ui",
+      "P0"
+    ],
+    "sprint": 3,
+    "estimate": "L"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/55",
+    "title": "Kanban view with Promote/Drop Icebox curation",
+    "epic": "EPIC-UI",
+    "labels": [
+      "type:feature",
+      "area:ui",
+      "P1"
+    ],
+    "sprint": 3,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/56",
+    "title": "Ledger view: full application table with scores and audit drill-down",
+    "epic": "EPIC-UI",
+    "labels": [
+      "type:feature",
+      "area:ui",
+      "P2"
+    ],
+    "sprint": 3,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/57",
+    "title": "Application event audit logging helper (append-only)",
+    "epic": "EPIC-UI",
+    "labels": [
+      "type:feature",
+      "area:security",
+      "P1"
+    ],
+    "sprint": 3,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/58",
+    "title": "Autonomy calibration: tune gates and confidence thresholds",
+    "epic": "EPIC-UI",
+    "labels": [
+      "type:spike",
+      "area:security",
+      "P1"
+    ],
+    "sprint": 6,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/59",
+    "title": "Rate-limiting + anti-ban pacing across connectors",
+    "epic": "EPIC-UI",
+    "labels": [
+      "type:feature",
+      "area:security",
+      "P1"
+    ],
+    "sprint": 6,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/60",
+    "title": "Observability: structured logging, run metrics, and health endpoints",
+    "epic": "EPIC-UI",
+    "labels": [
+      "type:infra",
+      "area:infra",
+      "P1"
+    ],
+    "sprint": 6,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/61",
+    "title": "Railway deployment: co-located FastAPI engine + Postgres",
+    "epic": "EPIC-UI",
+    "labels": [
+      "type:infra",
+      "area:infra",
+      "P0"
+    ],
+    "sprint": 6,
+    "estimate": "L"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/62",
+    "title": "Secrets management + KMS-backed Fernet key in production",
+    "epic": "EPIC-UI",
+    "labels": [
+      "type:infra",
+      "area:security",
+      "P0"
+    ],
+    "sprint": 6,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/63",
+    "title": "Security/compliance review pass + secrets/PII scan in CI",
+    "epic": "EPIC-UI",
+    "labels": [
+      "type:test",
+      "area:security",
+      "P0"
+    ],
+    "sprint": 6,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/64",
+    "title": "End-to-end integration test: sourced -> ranked -> queued",
+    "epic": "EPIC-SRC",
+    "labels": [
+      "type:test",
+      "area:sourcing",
+      "P0"
+    ],
+    "sprint": 1,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/65",
+    "title": "End-to-end integration test: queued -> tailored resume + ats_score",
+    "epic": "EPIC-TAILOR",
+    "labels": [
+      "type:test",
+      "area:graph",
+      "P0"
+    ],
+    "sprint": 2,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/66",
+    "title": "End-to-end integration test: through to a human-approved draft",
+    "epic": "EPIC-AITL",
+    "labels": [
+      "type:test",
+      "area:graph",
+      "P0"
+    ],
+    "sprint": 3,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/67",
+    "title": "End-to-end integration test: Tier-A sandbox submission",
+    "epic": "EPIC-APPLY",
+    "labels": [
+      "type:test",
+      "area:connectors",
+      "P0"
+    ],
+    "sprint": 4,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/68",
+    "title": "End-to-end integration test: OTP injection + lifecycle status update",
+    "epic": "EPIC-EMAIL",
+    "labels": [
+      "type:test",
+      "area:email",
+      "P0"
+    ],
+    "sprint": 5,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/69",
+    "title": "Seed data + fixtures: operator, profile, resumes, qa_history, sources",
+    "epic": "EPIC-FND",
+    "labels": [
+      "type:test",
+      "area:infra",
+      "P1"
+    ],
+    "sprint": 1,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/70",
+    "title": "model_config admin surface in Streamlit",
+    "epic": "EPIC-UI",
+    "labels": [
+      "type:feature",
+      "area:ui",
+      "P2"
+    ],
+    "sprint": 6,
+    "estimate": "S"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/71",
+    "title": "qa_history capture: persist operator answers for future AITL reuse",
+    "epic": "EPIC-AITL",
+    "labels": [
+      "type:feature",
+      "area:graph",
+      "P1"
+    ],
+    "sprint": 3,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/72",
+    "title": "agent_confidence computation feeding the quality gate",
+    "epic": "EPIC-AITL",
+    "labels": [
+      "type:feature",
+      "area:graph",
+      "P1"
+    ],
+    "sprint": 3,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/73",
+    "title": "Connector ToS/anti-ban policy doc + LinkedIn Tier B/C posture",
+    "epic": "EPIC-SRC",
+    "labels": [
+      "type:docs",
+      "area:connectors",
+      "P2"
+    ],
+    "sprint": 4,
+    "estimate": "S"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/74",
+    "title": "Spike: resilient DOM extraction strategy (browser-use/Stagehand) for Workday/Taleo",
+    "epic": "EPIC-APPLY",
+    "labels": [
+      "type:spike",
+      "area:connectors",
+      "P2"
+    ],
+    "sprint": 4,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/75",
+    "title": "Email matching heuristics: link inbound mail to the right application",
+    "epic": "EPIC-EMAIL",
+    "labels": [
+      "type:feature",
+      "area:email",
+      "P1"
+    ],
+    "sprint": 5,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/76",
+    "title": "Documentation suite: align docs with brief, schema, and backlog",
+    "epic": "EPIC-FND",
+    "labels": [
+      "type:docs",
+      "area:infra",
+      "P2"
+    ],
+    "sprint": 6,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/77",
+    "title": "ATS resolution from aggregators: hydrate portal_type + autonomy_tier from the apply URL",
+    "epic": "EPIC-SRC",
+    "labels": [
+      "type:feature",
+      "area:connectors",
+      "P1"
+    ],
+    "sprint": 4,
+    "estimate": "M"
+  },
+  {
+    "url": "https://github.com/kristenmartino/aeroapply/issues/78",
+    "title": "Model fallback-chain exhaustion parks the application to needs_review",
+    "epic": "EPIC-GRAPH",
+    "labels": [
+      "type:feature",
+      "area:graph",
+      "P1"
+    ],
+    "sprint": 6,
+    "estimate": "M"
+  }
+]
