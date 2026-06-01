@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Initialize git, create the private GitHub repo, and push.
+# Initialize git, create the public-safe GitHub repo, and push.
 set -euo pipefail
 OWNER="${OWNER:-kristenmartino}"
 REPO="${REPO:-aeroapply}"

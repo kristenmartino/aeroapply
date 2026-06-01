@@ -45,7 +45,7 @@ def recency_score(posted_at: datetime | None, now: datetime) -> float:
         return 0.1
     if posted_at.tzinfo is None:
         posted_at = posted_at.replace(tzinfo=UTC)
-    age_days = (now - posted_at).days
+    age_days = max(0, (now - posted_at).days)  # future-dated/clock-skew -> fresh, never negative
     if age_days <= 2:
         return 1.0
     if age_days <= 7:

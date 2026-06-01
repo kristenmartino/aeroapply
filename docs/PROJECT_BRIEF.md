@@ -17,7 +17,7 @@
 
 AeroApply is a **single-operator personal tool** (multi-tenant is explicitly out of scope for v1, though the schema is tenant-ready).
 
-- **Primary operator:** a Senior Business Analyst / Project Manager **pivoting into an AI Product Manager** track. Based in **Jupiter, FL** (commute anchor `26.9342, -80.0942`), open to **remote** or **South-Florida hybrid** (Jupiter / West Palm corridor).
+- **Primary operator:** a Senior Business Analyst / Project Manager **pivoting into an AI Product Manager** track. Based in **Jupiter, FL** (commute anchor configured in `config/profile.yaml`), open to **remote** or **South-Florida hybrid** (Jupiter / West Palm corridor).
 - **Target titles (priority order):** AI Product Manager, AI Solutions Architect (core, alignment `1.0`); Senior Business Analyst, Technical Project Manager (adjacent fallback, alignment `0.6`).
 - **Hard salary floor:** evaluate the **max** of a posted band; drop if max `< $115,000`. Unlisted salary passes through to the Icebox.
 

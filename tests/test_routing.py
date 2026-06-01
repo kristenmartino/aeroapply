@@ -93,3 +93,17 @@ def test_gate_state_profile_thresholds_flow_through():
                           portal_type="greenhouse", ats_score=0.95,
                           agent_confidence=0.96, auto_submit=True)
     assert decide_submission(st).route is Route.HUMAN
+
+
+def test_gate_state_auto_mode_empty_allowlist_blocks_all():
+    # Empty auto_submit_sources = NOTHING whitelisted -> always escalate (the secure-by-default fix).
+    st = build_gate_state(_autonomy(default_mode="auto", auto_submit_sources=[]),
+                          portal_type="random_ats", ats_score=0.99,
+                          agent_confidence=0.99, auto_submit=False)
+    assert decide_submission(st).route is Route.HUMAN
+
+
+def test_gate_state_auto_mode_never_overrides_tier_b_source():
+    st = build_gate_state(_autonomy(default_mode="auto"), portal_type="workday",
+                          ats_score=0.99, agent_confidence=0.99, auto_submit=False)
+    assert decide_submission(st).route is Route.HUMAN

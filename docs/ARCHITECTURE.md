@@ -22,7 +22,7 @@ flowchart TB
     CONN --> BNC
   end
   subgraph SCHED["Supervisor + WIP Scheduler — asyncio, cycle_minutes=180"]
-    RANK["v_icebox_ranked\n(execution_priority, weighted CASE in SQL)"]
+    RANK["ranking.py (Python)\n+ v_icebox_ranked fallback"]
     SUP{{"pull top-N (wip_limit=5)\nicebox → queued"}}
     RANK --> SUP
   end
@@ -101,7 +101,7 @@ The Supervisor is an `asyncio` task that wakes every `cycle_minutes` (default **
 async def supervise(pool: AsyncConnectionPool, cfg: SchedulerCfg) -> None:
     while True:
         async with pool.connection() as conn:
-            rows = await fetch_top_n(conn, limit=cfg.wip_limit)   # SELECT ... FROM v_icebox_ranked
+            rows = await fetch_top_n(conn, limit=cfg.wip_limit)   # icebox rows ranked by ranking.rank_jobs()
             for r in rows:
                 await mark_queued(conn, r.application_id)         # wip_status: icebox -> queued
         await asyncio.gather(*(run_application(r.application_id) for r in rows))
@@ -113,7 +113,7 @@ async def supervise(pool: AsyncConnectionPool, cfg: SchedulerCfg) -> None:
 - **Tier 1 — Icebox** (`wip_status='icebox'`): raw volume. Cheap/local models scrape continuously; the `SourcingBouncer` drops junk *before* the DB write, so the Icebox holds only survivors. Jobs wait here indefinitely at near-zero cost.
 - **Tier 2 — Execution Queue** (WIP-limited): the bounded working set. Promotion is gated by the Supervisor's `wip_limit`, so the heavy graph never runs unbounded.
 
-`execution_priority` is computed **dynamically in SQL** by `v_icebox_ranked` (never a stored, stale column). `manual_override` is an absolute trump (`+100`); the remaining factors — title alignment 35%, location 25%, recency 20%, competition 10%, urgency 10% — are operator-tunable via `ranking_weights` in `config/profile.yaml`. The view filters to `wip_status='icebox' AND status='sourced'`, so only un-started jobs compete for slots.
+`execution_priority` is computed in **Python** by `src/aeroapply/sourcing/ranking.py` from `profile.ranking_weights` (live — a config edit retunes it, no migration). `manual_override` is an absolute trump (`+100`); the remaining factors — title alignment 35%, location 25%, recency 20%, competition 10%, urgency 10% — are operator-tunable in `config/profile.yaml`. The `v_icebox_ranked` SQL view mirrors the formula with **frozen** weights as a debug/fallback and filters to `wip_status='icebox' AND status='sourced'`, so only un-started jobs compete for slots.
 
 `wip_status` (`icebox | queued | active | parked | done`) is internal scheduler state and is tracked **separately** from the operator-facing `status` machine: `sourced → queued → drafting → needs_review → approved → submitting → submitted → questionnaire → interview → offer → accepted → rejected`, plus terminals `user_rejected`, `closed_before_execution`, `withdrawn`, `error`.
 

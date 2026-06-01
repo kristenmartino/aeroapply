@@ -1,6 +1,6 @@
 # Sourcing, Bouncer & Ranking
 
-> Purpose: defines how AeroApply discovers roles 24/7 on cheap/local models, drops junk at the edge before any DB write, dedupes and parks survivors in the Icebox, ranks them with a deterministic SQL priority, lets the operator curate, and feeds the WIP-limited execution graph — all while spending zero frontier tokens until a job is actually queued.
+> Purpose: defines how AeroApply discovers roles 24/7 on cheap/local models, drops junk at the edge before any DB write, dedupes and parks survivors in the Icebox, ranks them in Python from live config weights, lets the operator curate, and feeds the WIP-limited execution graph — all while spending zero frontier tokens until a job is actually queued.
 
 This document is subordinate to `docs/PROJECT_BRIEF.md`; where they disagree, the brief wins.
 
@@ -28,7 +28,7 @@ flowchart LR
   FP -->|new| ICE[("Icebox\nwip_status='icebox'\nstatus='sourced'")]
   FP -. exists .-> X
   CUR["Streamlit Kanban\nPromote / Drop"] --> ICE
-  ICE --> RANK["v_icebox_ranked\nexecution_priority"]
+  ICE --> RANK["ranking.py (Python)\nprofile.ranking_weights (live)"]
   RANK --> SCH{{"Supervisor / Scheduler\nwip_limit=5 · cycle_minutes=180"}}
   SCH -->|top-N → 'queued'| EXG["Execution Graph\nfirst node: verify_open"]
 ```
@@ -54,7 +54,7 @@ Reference implementation: **`src/aeroapply/sourcing/bouncer.py`**. Thresholds an
 
 | # | Filter | Rule | Drop condition | Source of truth |
 |---|---|---|---|---|
-| 1 | **Geo fence** | Remote → keep. Hybrid/Onsite → keep only within **40 mi** of Jupiter, FL (`26.9342, -80.0942`) via geopy | onsite/hybrid AND distance > 40 mi | `max_commute_miles: 40` |
+| 1 | **Geo fence** | Remote → keep. Hybrid/Onsite → keep only within **40 mi** of the Jupiter, FL anchor (from `config/profile.yaml`) via geopy | onsite/hybrid AND distance > 40 mi | `max_commute_miles: 40` |
 | 2 | **Seniority / industry** | Regex-drop wrong-level or wrong-domain titles | title matches `\b(junior\|associate\|entry[\s-]?level\|intern\|grad\|construction\|civil\|healthcare\|clinical\|mechanical)\b` | `drop_title_regex` |
 | 3 | **Salary floor** | Evaluate the **MAX** of the posted band against the floor; **unlisted (0/NULL) passes through** to the Icebox | `salary_max > 0` AND `salary_max < 115000` | `min_salary_floor: 115000` |
 | 4 | **Clearance / visa gate** | Drop roles incompatible with the operator's actual work authorization | text matches `\b(active ts/sci\|top secret\|polygraph\|clearance required\|no c2c\|w2 only\|us citizens only)\b` | `legal_blocker_regex` |

@@ -84,7 +84,9 @@ def build_gate_state(
         "min_ats_score": min_ats,
         "min_agent_confidence": min_conf,
         "always_human_sources": list(autonomy.always_human_sources) or sorted(BROWSER_SOURCES),
-        "auto_submit_sources": list(autonomy.auto_submit_sources) or None,
+        "auto_submit_sources": (
+            list(autonomy.auto_submit_sources) if autonomy.auto_submit_sources is not None else None
+        ),
     }
 
 
@@ -103,9 +105,12 @@ def decide_submission(state: dict[str, Any]) -> SubmissionDecision:
     always_human = {s.lower() for s in (state.get("always_human_sources") or BROWSER_SOURCES)}
     if pt in always_human:
         reasons.append(f"source '{portal}' requires human review")
+    # auto_submit_sources: None = no allowlist constraint; [] = nothing whitelisted (block all).
     auto_sources = state.get("auto_submit_sources")
-    if auto_sources is not None and pt not in {s.lower() for s in auto_sources}:
-        reasons.append(f"source '{portal}' is not in auto_submit_sources")
+    if auto_sources is not None:
+        allowed = {s.lower() for s in auto_sources}
+        if not allowed or pt not in allowed:
+            reasons.append(f"source '{portal}' is not an allow-listed auto-submit source")
 
     # 2. Quality gate — ats_score AND agent_confidence (one combined gate).
     min_ats = state.get("min_ats_score", DEFAULT_MIN_ATS_SCORE)

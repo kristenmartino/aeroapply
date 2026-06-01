@@ -33,7 +33,7 @@
 
 ## EPIC-FND — Foundations: Repo, Infra, Config & Model Router
 
-**Goal.** Stand up the AeroApply project skeleton: private repo, CI with a cross-model review gate, Docker Postgres+pgvector, the canonical schema applied via Alembic, the Pydantic config/profile loader, and the model-router skeleton that every node reads from. This is the substrate every other epic builds on.
+**Goal.** Stand up the AeroApply project skeleton: public-safe repo, CI with a cross-model review gate, Docker Postgres+pgvector, the canonical schema applied via Alembic, the Pydantic config/profile loader, and the model-router skeleton that every node reads from. This is the substrate every other epic builds on.
 
 **Spans sprints:** 1, 6 · **Issues:** 10
 

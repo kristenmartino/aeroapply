@@ -23,10 +23,10 @@ def _database_url() -> str:
         from aeroapply.config import get_settings
 
         url = get_settings().database_url
-    except Exception:
-        url = os.environ.get(
-            "DATABASE_URL", "postgresql://aeroapply:aeroapply@localhost:5432/aeroapply"
-        )
+    except Exception as exc:
+        url = os.environ.get("DATABASE_URL")
+        if not url:
+            raise RuntimeError("DATABASE_URL must be set (or aeroapply.config importable)") from exc
     # SQLAlchemy needs an explicit psycopg3 driver.
     if url.startswith("postgresql://"):
         url = url.replace("postgresql://", "postgresql+psycopg://", 1)

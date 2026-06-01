@@ -1,7 +1,13 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from aeroapply.config import RankingWeights
-from aeroapply.sourcing.ranking import location_score, rank_jobs, score_job, title_score
+from aeroapply.sourcing.ranking import (
+    location_score,
+    rank_jobs,
+    recency_score,
+    score_job,
+    title_score,
+)
 
 NOW = datetime(2026, 6, 1, tzinfo=UTC)
 
@@ -33,3 +39,9 @@ def test_manual_override_trumps():
     low = score_job(GENERIC_REMOTE, TITLE_HEAVY, manual_override=True, now=NOW)
     high = score_job(AI_PM_ONSITE, TITLE_HEAVY, manual_override=False, now=NOW)
     assert low.execution_priority > high.execution_priority
+
+
+def test_recency_future_dated_is_clamped_fresh():
+    # A future/clock-skewed posted_at must not yield a negative age (which would score top).
+    assert recency_score(NOW + timedelta(hours=2), NOW) == 1.0
+    assert recency_score(NOW - timedelta(days=30), NOW) == 0.1

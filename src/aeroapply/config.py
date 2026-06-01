@@ -113,7 +113,7 @@ class SchedulerCfg(BaseModel):
 
 class AutonomyCfg(BaseModel):
     default_mode: str = "review"
-    auto_submit_sources: list[str] = Field(default_factory=list)
+    auto_submit_sources: list[str] | None = None  # None = no allowlist; [] = block all
     always_human_sources: list[str] = Field(default_factory=list)
     min_ats_score: float = 0.90
     min_agent_confidence: float = 0.95
