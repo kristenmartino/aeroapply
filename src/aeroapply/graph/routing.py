@@ -13,7 +13,10 @@ The function returns one of two SEMANTIC route labels — "auto_submit" or
         "escalate_to_human_review": "pause_and_checkpoint",
     })
 
-Gate order is canonical (PROJECT_BRIEF.md §6): Source -> Quality -> Preference -> Honesty.
+The state the gate reads is built from config via `build_gate_state` (so
+`profile.autonomy` — sources, thresholds, default_mode — actually drives the
+decision). Gate order is canonical (PROJECT_BRIEF.md §6): Source -> Quality ->
+Preference -> Honesty.
 
 See: docs/HITL_AITL.md
 """
@@ -22,9 +25,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-# Sources that must always be human-gated (fragile DOM / ban-prone / ToS-restricted).
+if TYPE_CHECKING:
+    from aeroapply.config import AutonomyCfg, Settings
+
+# Fallback set if no `always_human_sources` is supplied (fragile DOM / ban-prone / ToS).
 BROWSER_SOURCES: frozenset[str] = frozenset({"workday", "taleo", "linkedin", "custom"})
 
 DEFAULT_MIN_ATS_SCORE = 0.90
@@ -46,23 +52,65 @@ class SubmissionDecision:
         return self.route is Route.AUTO_SUBMIT
 
 
+def build_gate_state(
+    autonomy: AutonomyCfg,
+    *,
+    portal_type: str | None,
+    ats_score: float | None,
+    agent_confidence: float | None,
+    auto_submit: bool = False,
+    novel_questions: list[Any] | None = None,
+    sensitive_unanswered: bool = False,
+    settings: Settings | None = None,
+) -> dict[str, Any]:
+    """Build the state dict `decide_submission` reads from `profile.autonomy`.
+
+    Env `Settings` (if passed) override the profile's thresholds — deployment wins.
+    `default_mode='auto'` makes auto-submit the default; 'review' requires explicit
+    per-application opt-in. Gates still apply either way (secure-by-default).
+    """
+    if settings is not None:
+        min_ats, min_conf = settings.min_ats_score, settings.min_agent_confidence
+    else:
+        min_ats, min_conf = autonomy.min_ats_score, autonomy.min_agent_confidence
+    effective_auto = auto_submit or (autonomy.default_mode == "auto")
+    return {
+        "portal_type": portal_type,
+        "ats_score": ats_score,
+        "agent_confidence": agent_confidence,
+        "auto_submit": effective_auto,
+        "novel_questions": novel_questions or [],
+        "sensitive_unanswered": sensitive_unanswered,
+        "min_ats_score": min_ats,
+        "min_agent_confidence": min_conf,
+        "always_human_sources": list(autonomy.always_human_sources) or sorted(BROWSER_SOURCES),
+        "auto_submit_sources": (
+            list(autonomy.auto_submit_sources) if autonomy.auto_submit_sources is not None else None
+        ),
+    }
+
+
 def decide_submission(state: dict[str, Any]) -> SubmissionDecision:
     """Evaluate all four gates and return an auditable decision.
 
-    Expected state keys:
-      portal_type: str            e.g. 'greenhouse' | 'lever' | 'workday'
-      ats_score: float            0..1 (ATS-Critic keyword coverage)
-      agent_confidence: float     0..1
-      auto_submit: bool           operator opt-in for this application/source
-      novel_questions: list       unseen questions not matched in qa_history
-      sensitive_unanswered: bool  any EEO/visa/clearance/self-ID not high-confidence
-      min_ats_score / min_agent_confidence: optional overrides
+    State keys (all optional; safe defaults): portal_type, ats_score,
+    agent_confidence, auto_submit, novel_questions, sensitive_unanswered,
+    min_ats_score, min_agent_confidence, always_human_sources, auto_submit_sources.
     """
     reasons: list[str] = []
+    portal = state.get("portal_type") or ""
+    pt = portal.lower()
 
-    # 1. Source gate — DOM/ban-prone portals are never auto-submitted.
-    if (state.get("portal_type") or "").lower() in BROWSER_SOURCES:
-        reasons.append(f"source '{state.get('portal_type')}' requires human review")
+    # 1. Source gate — DOM/ban-prone portals never auto-submit; only listed sources may.
+    always_human = {s.lower() for s in (state.get("always_human_sources") or BROWSER_SOURCES)}
+    if pt in always_human:
+        reasons.append(f"source '{portal}' requires human review")
+    # auto_submit_sources: None = no allowlist constraint; [] = nothing whitelisted (block all).
+    auto_sources = state.get("auto_submit_sources")
+    if auto_sources is not None:
+        allowed = {s.lower() for s in auto_sources}
+        if not allowed or pt not in allowed:
+            reasons.append(f"source '{portal}' is not an allow-listed auto-submit source")
 
     # 2. Quality gate — ats_score AND agent_confidence (one combined gate).
     min_ats = state.get("min_ats_score", DEFAULT_MIN_ATS_SCORE)
@@ -93,4 +141,11 @@ def evaluate_submission_route(state: dict[str, Any]) -> str:
     return str(decide_submission(state).route.value)
 
 
-__all__ = ["Route", "SubmissionDecision", "decide_submission", "evaluate_submission_route"]
+__all__ = [
+    "Route",
+    "SubmissionDecision",
+    "build_gate_state",
+    "decide_submission",
+    "evaluate_submission_route",
+    "BROWSER_SOURCES",
+]

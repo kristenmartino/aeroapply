@@ -1,6 +1,6 @@
 # Sourcing, Bouncer & Ranking
 
-> Purpose: defines how AeroApply discovers roles 24/7 on cheap/local models, drops junk at the edge before any DB write, dedupes and parks survivors in the Icebox, ranks them with a deterministic SQL priority, lets the operator curate, and feeds the WIP-limited execution graph — all while spending zero frontier tokens until a job is actually queued.
+> Purpose: defines how AeroApply discovers roles 24/7 on cheap/local models, drops junk at the edge before any DB write, dedupes and parks survivors in the Icebox, ranks them in Python from live config weights, lets the operator curate, and feeds the WIP-limited execution graph — all while spending zero frontier tokens until a job is actually queued.
 
 This document is subordinate to `docs/PROJECT_BRIEF.md`; where they disagree, the brief wins.
 
@@ -28,7 +28,7 @@ flowchart LR
   FP -->|new| ICE[("Icebox\nwip_status='icebox'\nstatus='sourced'")]
   FP -. exists .-> X
   CUR["Streamlit Kanban\nPromote / Drop"] --> ICE
-  ICE --> RANK["v_icebox_ranked\nexecution_priority"]
+  ICE --> RANK["ranking.py (Python)\nprofile.ranking_weights (live)"]
   RANK --> SCH{{"Supervisor / Scheduler\nwip_limit=5 · cycle_minutes=180"}}
   SCH -->|top-N → 'queued'| EXG["Execution Graph\nfirst node: verify_open"]
 ```
@@ -54,7 +54,7 @@ Reference implementation: **`src/aeroapply/sourcing/bouncer.py`**. Thresholds an
 
 | # | Filter | Rule | Drop condition | Source of truth |
 |---|---|---|---|---|
-| 1 | **Geo fence** | Remote → keep. Hybrid/Onsite → keep only within **40 mi** of Jupiter, FL (`26.9342, -80.0942`) via geopy | onsite/hybrid AND distance > 40 mi | `max_commute_miles: 40` |
+| 1 | **Geo fence** | Remote → keep. Hybrid/Onsite → keep only within **40 mi** of the Jupiter, FL anchor (from `config/profile.yaml`) via geopy | onsite/hybrid AND distance > 40 mi | `max_commute_miles: 40` |
 | 2 | **Seniority / industry** | Regex-drop wrong-level or wrong-domain titles | title matches `\b(junior\|associate\|entry[\s-]?level\|intern\|grad\|construction\|civil\|healthcare\|clinical\|mechanical)\b` | `drop_title_regex` |
 | 3 | **Salary floor** | Evaluate the **MAX** of the posted band against the floor; **unlisted (0/NULL) passes through** to the Icebox | `salary_max > 0` AND `salary_max < 115000` | `min_salary_floor: 115000` |
 | 4 | **Clearance / visa gate** | Drop roles incompatible with the operator's actual work authorization | text matches `\b(active ts/sci\|top secret\|polygraph\|clearance required\|no c2c\|w2 only\|us citizens only)\b` | `legal_blocker_regex` |
@@ -127,7 +127,7 @@ The Icebox has **no depth limit** — cheap models can scrape thousands of roles
 
 ## 6. Execution-priority ranking
 
-Ranking is computed **dynamically in SQL** by the `v_icebox_ranked` view (in `scripts/bootstrap.sql`), never materialized — so it can never go stale as `posted_at`/`closing_date` age past their thresholds. The supervisor simply reads the top of this view. `manual_override` is an absolute trump worth `+100.0`, which dominates any combination of the weighted factors (whose weighted sum maxes out at `1.0`), guaranteeing a Promoted job sorts above everything organic.
+Ranking is computed in **Python** by `src/aeroapply/sourcing/ranking.py` (`rank_jobs`/`score_job`), which reads `profile.ranking_weights` **live** — so weights are tunable without a migration (see docs/CALIBRATION.md). The supervisor scores Icebox rows in Python and pulls the top-N. The `v_icebox_ranked` SQL view mirrors the same formula with **frozen** weights and is a **debug/fallback only** — handy for ad-hoc SQL, never the source of truth for ordering. `manual_override` is an absolute trump worth `+100.0`, which dominates any combination of the weighted factors (whose weighted sum maxes out at `1.0`), guaranteeing a Promoted job sorts above everything organic.
 
 | Factor | Weight | Rule |
 |---|---|---|
@@ -138,7 +138,7 @@ Ranking is computed **dynamically in SQL** by the `v_icebox_ranked` view (in `sc
 | **Competition (applicants)** | 10% | `<50` → `1.0`; `<150` → `0.5`; else `0.0` |
 | **Urgency (closing soon)** | 10% | closes ≤3 days → `1.0`; else `0.0` |
 
-The five weighted factors sum to `1.0` and are operator-tunable via `config/profile.yaml` → `ranking_weights` (overrides also live in `search_profile.weights` JSONB). The canonical SQL:
+The five weighted factors sum to `1.0` and are operator-tunable via `config/profile.yaml` → `ranking_weights`, applied live in `ranking.py` (`RankingWeights` validates the sum). The SQL view below mirrors the formula with **frozen** weights (debug/fallback only):
 
 ```sql
 CREATE OR REPLACE VIEW v_icebox_ranked AS
@@ -182,7 +182,7 @@ WHERE a.wip_status = 'icebox'
 ORDER BY execution_priority DESC;
 ```
 
-Two facts worth flagging for anyone editing this view: the `WHERE` clause restricts to (`icebox`, `sourced`) so curated-but-not-yet-run items and in-flight items naturally fall out of the ranking; and the title/location `CASE` arms encode the same persona as the bouncer (the role/region level only — concrete coordinates and the salary floor stay in `config/profile.yaml` per the brief's PII boundary, §2). Keeping the formula in SQL rather than Python means the Streamlit Kanban and the scheduler see *identical* ordering with no drift.
+Two facts worth flagging for anyone editing this view: the `WHERE` clause restricts to (`icebox`, `sourced`) so curated-but-not-yet-run items and in-flight items naturally fall out of the ranking; and the title/location `CASE` arms encode the same persona as the bouncer (the role/region level only — concrete coordinates and the salary floor stay in `config/profile.yaml` per the brief's PII boundary, §2). Because the **canonical** ordering is `ranking.py`, the Streamlit Kanban and the scheduler call the *same* Python function and agree with no drift; this view intentionally lags live weight changes and exists only for ad-hoc inspection.
 
 ---
 
@@ -207,7 +207,7 @@ Both actions append to `application_event` (`actor='human'`) for the audit trail
 
 ## 8. WIP scheduler — pulling top-N
 
-The supervisor (the persistent scheduler) wakes on `scheduler.cycle_minutes` (default **180** min) and promotes up to `scheduler.wip_limit` (default **5**) jobs from the ranked Icebox into the execution queue:
+The supervisor (the persistent scheduler) wakes on `scheduler.cycle_minutes` (default **180** min), ranks the Icebox in Python (`ranking.rank_jobs` over `profile.ranking_weights`), and promotes up to `scheduler.wip_limit` (default **5**) jobs into the execution queue. (A SQL-only fallback using the frozen `v_icebox_ranked` view is shown below.)
 
 ```sql
 -- Promote the top-N ranked icebox jobs to the WIP-limited queue.
@@ -265,7 +265,7 @@ and the supervisor pulls the next-highest job from the Icebox. This is the cheap
 1. **No DB write for a dropped job.** The bouncer is an edge filter; drops are logged with a reason code but create no `job`/`application` row.
 2. **`fingerprint` is the dedupe authority.** It is `UNIQUE`; all inserts are `ON CONFLICT (fingerprint) DO NOTHING`.
 3. **Salary floor is band-MAX with unlisted pass-through.** Never drop on a missing/zero band; never evaluate against the min.
-4. **Ranking lives only in SQL** (`v_icebox_ranked`). No second copy of the formula in Python — UI and scheduler must agree byte-for-byte.
+4. **Ranking lives in Python** (`ranking.py`), reading `profile.ranking_weights` **live**; UI and scheduler call the same function so they agree. The `v_icebox_ranked` SQL view is a frozen-weight debug/fallback, **not** the ordering source of truth.
 5. **`manual_override` is a numeric trump (+100), not a queue bypass.** It guarantees top rank; the scheduler still moves the row.
 6. **Drop = `status='user_rejected'` (terminal), never a delete.** The retained row + fingerprint are what make re-sourcing idempotent.
 7. **Only `queued` jobs spend frontier tokens.** Icebox is free; the WIP limit is the throttle.

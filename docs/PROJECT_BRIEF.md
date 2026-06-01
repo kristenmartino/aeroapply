@@ -11,13 +11,13 @@
 - **Name:** AeroApply
 - **Tagline:** *Your autonomous job-application co-pilot — sources, tailors, applies, and tracks, with you in the loop only when it matters.*
 - **One-liner:** A persistent, always-on multi-agent daemon that sources relevant roles 24/7, tailors a chosen resume variant for each one (with ATS-keyword optimization via a writer↔critic loop), writes cover letters, answers screening questions from your history, applies through the right channel (API or browser), and tracks the full lifecycle through email — pausing for you only on genuine product/judgment decisions.
-- **Repo slug:** `aeroapply` · **Python package:** `aeroapply` · **Visibility:** private.
+- **Repo slug:** `aeroapply` · **Python package:** `aeroapply` · **Visibility:** public (public-safe scaffold; no real operator data committed).
 
 ## 2. Operator persona & configuration
 
 AeroApply is a **single-operator personal tool** (multi-tenant is explicitly out of scope for v1, though the schema is tenant-ready).
 
-- **Primary operator:** a Senior Business Analyst / Project Manager **pivoting into an AI Product Manager** track. Based in **Jupiter, FL** (commute anchor `26.9342, -80.0942`), open to **remote** or **South-Florida hybrid** (Jupiter / West Palm corridor).
+- **Primary operator:** a Senior Business Analyst / Project Manager **pivoting into an AI Product Manager** track. Based in **Jupiter, FL** (commute anchor configured in `config/profile.yaml`), open to **remote** or **South-Florida hybrid** (Jupiter / West Palm corridor).
 - **Target titles (priority order):** AI Product Manager, AI Solutions Architect (core, alignment `1.0`); Senior Business Analyst, Technical Project Manager (adjacent fallback, alignment `0.6`).
 - **Hard salary floor:** evaluate the **max** of a posted band; drop if max `< $115,000`. Unlisted salary passes through to the Icebox.
 
@@ -101,7 +101,7 @@ flowchart TB
 - **Stale-queue guard:** the execution graph's **first** node (`verify_open`) HTTP-pings `portal_url`. On 404 / "no longer accepting", it sets status `closed_before_execution` and pulls the next job — no expensive drafting wasted.
 
 ### 5.2 Execution-priority scoring (canonical formula)
-Computed in SQL by `v_icebox_ranked`. `manual_override` is an absolute trump (+100).
+Computed in **Python** by `src/aeroapply/sourcing/ranking.py` from `profile.ranking_weights` (tunable live — see docs/CALIBRATION.md). The `v_icebox_ranked` SQL view mirrors the same formula with **frozen** weights as a debug/fallback only. `manual_override` is an absolute trump (+100).
 
 | Factor | Weight | Rule |
 |---|---|---|
@@ -196,7 +196,7 @@ Python 3.12 (uv) · LangGraph + `langgraph-checkpoint-postgres` · psycopg3 + `A
 4. **Respect ToS & rate limits.** LinkedIn auto-apply and scraping are ban-prone and ToS-restricted → Tier B/C, conservative pacing, human-gated.
 5. **Credentials & PII encrypted at rest** (Fernet/KMS); secrets in `.env`/secret manager, never committed; verify inbound-webhook signatures.
 6. **Full audit log** (`application_event`) for every agent/human/system action.
-7. **Private repo.** No real resumes, credentials, or personal data in git.
+7. **Public-safe repo.** Public scaffold; no real résumés, credentials, or personal data in git — real values live only in `.env` and `config/profile.yaml` (both gitignored).
 
 ## 14. Repository map (docs & code must match this)
 ```

@@ -94,7 +94,7 @@ class ModelRouter:
         Imports are deferred so a node only pulls in the SDK it actually uses.
         """
         spec = self.resolve(node)
-        p = dict(spec.params)
+        p: dict[str, Any] = dict(spec.params)
         if spec.provider == "anthropic":
             from langchain_anthropic import ChatAnthropic
 
@@ -103,15 +103,17 @@ class ModelRouter:
                 betas.append("context-1m-2025-08-07")  # 1M context beta
             if p.pop("fast", False):
                 p.setdefault("model_kwargs", {})["service_tier"] = "fast"  # fast mode
-            extra = {"extra_headers": {"anthropic-beta": ",".join(betas)}} if betas else {}
-            return ChatAnthropic(model=spec.model_id, **p, **extra)
+            if betas:
+                p["default_headers"] = {"anthropic-beta": ",".join(betas)}
+            p["model"] = spec.model_id
+            return ChatAnthropic(**p)
         if spec.provider in ("openai", "deepseek"):
             from langchain_openai import ChatOpenAI
 
             base = "https://api.deepseek.com" if spec.provider == "deepseek" else None
             key_env = "DEEPSEEK_API_KEY" if spec.provider == "deepseek" else "OPENAI_API_KEY"
-            api_key = os.getenv(key_env)
-            return ChatOpenAI(model=spec.model_id, base_url=base, api_key=api_key, **p)
+            opts: dict[str, Any] = {"base_url": base, "api_key": os.getenv(key_env), **p}
+            return ChatOpenAI(model=spec.model_id, **opts)
         if spec.provider == "ollama":
             from langchain_ollama import ChatOllama
 

@@ -77,7 +77,7 @@ Stop tuning a knob-set when a config beats the incumbent on the held-out window 
 
 ## Feeding results back (an architecture note)
 - **Thresholds** are already live config: `Settings.min_ats_score` / `min_agent_confidence` / `autonomy.*`. Updating them is a config change, no deploy.
-- **Weights are currently hard-coded in the `v_icebox_ranked` SQL view.** That makes empirical tuning require a migration each time — bad for a tuning loop. **Recommendation (EPIC-ICE):** move ranking into the Python scheduler so it reads `profile.ranking_weights`, computing `execution_priority` per row; keep the SQL view as a debug/fallback. Then a weight change is a `config/profile.yaml` edit the bandit can flip live.
+- **Weights live in `profile.ranking_weights`** and are applied live by `src/aeroapply/sourcing/ranking.py` — a `config/profile.yaml` edit is enough for the bandit to flip weights with **no migration**. The `v_icebox_ranked` SQL view keeps the same formula with **frozen** weights as a debug/fallback only.
 
 ## Caveats
 Small-N early (don't trust < ~150 labels); time-based CV only (market seasonality confounds random splits); correct for multiple comparisons when grid-searching; the loss is asymmetric, so optimize expected cost, not accuracy; and re-run calibration after any model-router change (a new Generator/Critic shifts both `ats_score` and `agent_confidence`).

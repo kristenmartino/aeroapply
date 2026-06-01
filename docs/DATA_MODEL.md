@@ -96,7 +96,7 @@ Every UUID PK defaults via `gen_random_uuid()`. User-owned tables cascade-delete
 - **LangGraph linkage:** `thread_id VARCHAR(255)` — set equal to the application id and used as the checkpoint thread key, the join between this table and the auto-created `checkpoints` tables.
 - **Timestamps:** `submitted_at TIMESTAMPTZ` (set when the application is actually filed; powers the time-to-apply metric), plus `created_at`/`updated_at`.
 
-Note `execution_priority` is **not a column** — it is computed live by `v_icebox_ranked` (below), so it can never go stale against a tunable weight change.
+Note `execution_priority` is **not a column** — it is computed live by `src/aeroapply/sourcing/ranking.py` (reading `profile.ranking_weights`), so weight tuning needs no migration. The `v_icebox_ranked` view (below) computes the same formula with **frozen** weights for ad-hoc SQL inspection.
 
 **`application_event`** — append-only audit log of *every* action. `event_type`, `actor` (`CHECK IN ('agent','human','system')`), `payload JSONB`. This satisfies the "full audit log for every agent/human/system action" non-negotiable.
 
@@ -154,9 +154,9 @@ stateDiagram-v2
 
 The happy path is `sourced → queued → drafting → needs_review → approved → submitting → submitted → questionnaire → interview → offer → accepted`. Branch/terminal tokens: `rejected`, `user_rejected` (operator dropped it from the Kanban — reachable from any non-terminal status; `sourced` and `needs_review` are drawn as representative arcs), `closed_before_execution` (the `verify_open` node found the posting gone — no frontier tokens wasted), `withdrawn` (operator retracts after submission, from `submitted` or `interview`), and `error`. The two machines are independent: e.g. a posting in `needs_review` (business) is `parked` (scheduler) while it sits in the HITL Inbox.
 
-## The `v_icebox_ranked` view
+## The `v_icebox_ranked` view (frozen-weight debug/fallback)
 
-`execution_priority` is computed dynamically so it is **never stale** — change a weight and the ranking shifts on the next read. The view selects from `application a JOIN job j`, filtered to the Icebox waiting room (`WHERE a.wip_status = 'icebox' AND a.status = 'sourced'`), and orders by the score descending. The Supervisor simply reads the top-N to fill the WIP queue.
+The **canonical** ordering is Python (`ranking.py`, reading `profile.ranking_weights`); this view mirrors the formula with **frozen** weights for ad-hoc SQL inspection — a `profile.yaml` weight change takes effect in Python, not here. The view selects from `application a JOIN job j`, filtered to the Icebox waiting room (`WHERE a.wip_status = 'icebox' AND a.status = 'sourced'`), and orders by the score descending.
 
 The weighted `CASE` expression encodes the canonical formula:
 
@@ -182,7 +182,7 @@ The weighted `CASE` expression encodes the canonical formula:
                  ELSE 0.0 END)                                  -- urgency (10%)
 ```
 
-The four non-trump weights (0.35 + 0.25 + 0.20 + 0.10 + 0.10) intentionally sum to 1.0, so a non-promoted application scores in `[0, 1]` and a manually promoted one lands at `100 + [0,1]` — guaranteeing `manual_override = TRUE` always outranks any organically-scored job. `ILIKE` keeps matching case-insensitive against scraped titles/locations. The weights are constants in the view today but are operator-tunable via `search_profile.weights`; a migration that parameterizes them must keep this 1.0-sum invariant.
+The four non-trump weights (0.35 + 0.25 + 0.20 + 0.10 + 0.10) intentionally sum to 1.0, so a non-promoted application scores in `[0, 1]` and a manually promoted one lands at `100 + [0,1]` — guaranteeing `manual_override = TRUE` always outranks any organically-scored job. `ILIKE` keeps matching case-insensitive against scraped titles/locations. The weights in this view are **frozen** (debug/fallback); the live, operator-tunable weights live in `profile.ranking_weights` and are applied in `ranking.py` (`RankingWeights` validates the 1.0-sum invariant).
 
 ## pgvector HNSW indexes + the dimension caveat
 

@@ -4,7 +4,7 @@
 
 AeroApply is a persistent, always-on multi-agent daemon that sources relevant roles 24/7, tailors a chosen résumé variant for each (with ATS-keyword optimization via a writer⇄critic loop), writes cover letters, answers screening questions from your history, applies through the right channel (clean API or browser), and tracks the full lifecycle through email — pausing for **you** only on genuine product/judgment decisions.
 
-**Status:** pre-alpha / planning + skeleton. Private, single-operator tool. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+**Status:** pre-alpha / planning + skeleton. **Public-safe scaffold** for a private, single-operator tool — no real résumés, credentials, or PII are committed (real values live only in `.env` and `config/profile.yaml`, both gitignored). See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ---
 

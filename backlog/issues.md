@@ -22,7 +22,7 @@
 <a id="epic-fnd"></a>
 ## EPIC-FND — Foundations: Repo, Infra, Config & Model Router
 
-_Stand up the AeroApply project skeleton: private repo, CI with a cross-model review gate, Docker Postgres+pgvector, the canonical schema applied via Alembic, the Pydantic config/profile loader, and the model-router skeleton that every node reads from. This is the substrate every other epic builds on._
+_Stand up the AeroApply project skeleton: public-safe repo, CI with a cross-model review gate, Docker Postgres+pgvector, the canonical schema applied via Alembic, the Pydantic config/profile loader, and the model-router skeleton that every node reads from. This is the substrate every other epic builds on._
 
 ### EPIC-FND-1. Apply bootstrap.sql as the initial Alembic migration
 
@@ -144,7 +144,7 @@ Implement a typed Pydantic v2 settings layer that loads operator config from con
 - **Labels:** `type:infra`, `area:infra`, `P0`
 - **Depends on:** _(none)_
 
-Create the private aeroapply repository skeleton matching the canonical repository map: pyproject.toml managed by uv on Python 3.12, the src/aeroapply package layout, docs/, infra/, scripts/, services/, tests/, README, CONTRIBUTING, and .gitignore. Wire ruff, mypy (strict), and pytest as the standard toolchain with Pydantic v2 as a core dependency. This is the first commit everything else branches from.
+Create the public-safe aeroapply repository skeleton matching the canonical repository map: pyproject.toml managed by uv on Python 3.12, the src/aeroapply package layout, docs/, infra/, scripts/, services/, tests/, README, CONTRIBUTING, and .gitignore. Wire ruff, mypy (strict), and pytest as the standard toolchain with Pydantic v2 as a core dependency. This is the first commit everything else branches from.
 
 **Acceptance criteria**
 

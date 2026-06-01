@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Initialize git, create the private GitHub repo, and push.
+# Initialize git, create the public-safe GitHub repo, and push.
 set -euo pipefail
 OWNER="${OWNER:-kristenmartino}"
 REPO="${REPO:-aeroapply}"
@@ -24,7 +24,7 @@ fi
 
 if ! gh repo view "$OWNER/$REPO" >/dev/null 2>&1; then
   gh repo create "$OWNER/$REPO" \
-    --private \
+    --public \
     --source=. \
     --remote=origin \
     --description "Autonomous, human-in-the-loop job-application daemon (LangGraph + Postgres/pgvector)"

@@ -83,11 +83,11 @@ The lifecycle column is a horizontal status ribbon driven straight by the canoni
 
 ### 2.3 Kanban — Icebox triage
 
-The Kanban sits over **Tier-1, the Icebox** (`wip_status = 'icebox'`, `status = 'sourced'`). It is how the operator curates raw sourcing volume before the Supervisor ever spends frontier tokens. Cards are read from `v_icebox_ranked`, which computes `execution_priority` dynamically (so the board is never stale), and bucketed into columns by priority band:
+The Kanban sits over **Tier-1, the Icebox** (`wip_status = 'icebox'`, `status = 'sourced'`). It is how the operator curates raw sourcing volume before the Supervisor ever spends frontier tokens. Cards are ordered by `ranking.py` (the same `rank_jobs` the scheduler calls, over `profile.ranking_weights`; the `v_icebox_ranked` view remains a SQL-inspection fallback), and bucketed into columns by priority band:
 
 ```mermaid
 flowchart LR
-  subgraph BOARD["Icebox Kanban — source: v_icebox_ranked"]
+  subgraph BOARD["Icebox Kanban — source: ranking.py"]
     direction LR
     C0["Promoted\nmanual_override = TRUE\n(priority ≥ 100)"]
     C1["Hot\npriority ≥ 0.75"]

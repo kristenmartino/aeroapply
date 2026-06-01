@@ -11,7 +11,7 @@
 **Status:** planning + skeleton complete · **Operator:** Senior BA/PM → AI Product Manager (Jupiter, FL).
 
 ### Links
-- **GitHub repo (private):** https://github.com/kristenmartino/aeroapply
+- **GitHub repo (public):** https://github.com/kristenmartino/aeroapply
 - **GitHub Project board (69-issue backlog):** https://github.com/users/kristenmartino/projects/5
 
 ### What it does
