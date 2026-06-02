@@ -66,7 +66,10 @@ def test_ingest_rank_promote_drop_roundtrip():
         icebox = repo.fetch_icebox(conn, user_id)
         by_title = {job["title"]: aid for aid, job, _ in icebox}
         ai_id, ba_id = by_title[ai.title], by_title[ba.title]
-        assert all(job["company"] == "ZZTestCo" for _, job, _ in icebox)  # display field for Kanban-lite
+        # company is surfaced for the Kanban — assert on this test's own rows, not the whole
+        # icebox (a populated dev DB may hold unrelated sourced jobs).
+        companies = {aid: job["company"] for aid, job, _ in icebox}
+        assert companies[ai_id] == "ZZTestCo" and companies[ba_id] == "ZZTestCo"
 
         scores = {aid: sj.execution_priority for aid, sj in rank_icebox(conn, user_id, profile.ranking_weights)}
         assert scores[ai_id] > scores[ba_id]   # AI PM (title 1.0) outranks BA (0.6)
@@ -242,9 +245,10 @@ def test_wip_scheduler_promotes_topn_and_is_idempotent():
     from aeroapply.sourcing.scheduler import promote_to_queued
 
     profile = load_profile(EXAMPLE)
+    # Distinct titles so the company|title|location fingerprint does not dedupe them.
     postings = [
         NormalizedPosting(source_key="greenhouse", external_id=f"zzq{i}", company="ZZTestCo",
-                          title="ZZTEST AI Product Manager", remote_mode="remote", location="Remote")
+                          title=f"ZZTEST AI Product Manager {i}", remote_mode="remote", location="Remote")
         for i in range(4)
     ]
 
