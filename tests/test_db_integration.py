@@ -197,3 +197,39 @@ def test_curation_event_without_snapshot_flags_missing():
     finally:
         conn.rollback()
         conn.close()
+
+
+def test_kanban_autosnapshot_makes_curation_paired():
+    # Mirrors the Kanban UI path: snapshot_row (now wired before Promote/Drop) means a
+    # bare curation action — no prior `rank --persist` — still lands ranking_debug_present=True.
+    from aeroapply.config import load_profile
+    from aeroapply.connectors.base import NormalizedPosting
+    from aeroapply.db import repo
+    from aeroapply.ui.board import build_board, snapshot_row
+
+    profile = load_profile(EXAMPLE)
+    job = NormalizedPosting(source_key="greenhouse", external_id="zz8", company="ZZTestCo",
+                            title="ZZTEST AI Product Manager", remote_mode="remote", location="Remote")
+
+    conn = repo.connect(os.environ["DATABASE_URL"])
+    try:
+        user_id = repo.ensure_operator(conn, profile)
+        repo.upsert_icebox(conn, user_id, [job])
+
+        rows = build_board(conn, user_id, profile.ranking_weights)
+        row = rows[0]
+        snapshot_row(conn, row, profile.ranking_weights)  # what the Kanban does pre-Promote
+        repo.promote(conn, row.application_id)
+
+        payload = conn.execute(
+            """SELECT payload FROM application_event
+               WHERE application_id = %s ORDER BY created_at DESC LIMIT 1""",
+            (row.application_id,),
+        ).fetchone()[0]
+        assert payload["action"] == "promote" and payload["label"] == "manual_override"
+        assert payload["ranking_debug_present"] is True
+        for key, value in row.components.items():
+            assert payload["ranking_debug"]["components"][key] == pytest.approx(value)
+    finally:
+        conn.rollback()
+        conn.close()

@@ -16,6 +16,7 @@ import psycopg
 from aeroapply.config import RankingWeights
 from aeroapply.db import repo
 from aeroapply.sourcing.ranking import rank_jobs
+from aeroapply.sourcing.scheduler import ranking_debug_payload
 
 
 @dataclass(frozen=True)
@@ -56,4 +57,17 @@ def build_board(
     return board
 
 
-__all__ = ["BoardRow", "build_board"]
+def snapshot_row(conn: psycopg.Connection, row: BoardRow, weights: RankingWeights) -> None:
+    """Persist this card's ranking snapshot so a subsequent Promote/Drop event is paired.
+
+    Writes the BoardRow's already-computed ranker features (the same values rendered on
+    the card) to `application.ranking_debug` via `repo.set_ranking_debug`. Caller commits.
+    """
+    repo.set_ranking_debug(
+        conn,
+        row.application_id,
+        ranking_debug_payload(row.components, row.execution_priority, weights),
+    )
+
+
+__all__ = ["BoardRow", "build_board", "snapshot_row"]

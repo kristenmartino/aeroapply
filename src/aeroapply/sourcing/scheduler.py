@@ -7,6 +7,8 @@ that `ranking_debug` telemetry (#80) will persist.
 
 from __future__ import annotations
 
+from typing import Any
+
 import psycopg
 
 from aeroapply.config import RankingWeights
@@ -21,6 +23,17 @@ def rank_icebox(
     return rank_jobs(rows, weights)
 
 
+def ranking_debug_payload(
+    components: dict[str, float], execution_priority: float, weights: RankingWeights
+) -> dict[str, Any]:
+    """The `application.ranking_debug` snapshot shape: ranker features + the weights used."""
+    return {
+        "components": components,
+        "execution_priority": execution_priority,
+        "weights": weights.model_dump(),
+    }
+
+
 def snapshot_ranking_debug(
     conn: psycopg.Connection, user_id: str, weights: RankingWeights
 ) -> list[tuple[str, ScoredJob]]:
@@ -32,18 +45,13 @@ def snapshot_ranking_debug(
     behavior; the caller owns the transaction and commits.
     """
     ranked = rank_icebox(conn, user_id, weights)
-    weights_snapshot = weights.model_dump()
     for app_id, scored in ranked:
         repo.set_ranking_debug(
             conn,
             app_id,
-            {
-                "components": scored.components,
-                "execution_priority": scored.execution_priority,
-                "weights": weights_snapshot,
-            },
+            ranking_debug_payload(scored.components, scored.execution_priority, weights),
         )
     return ranked
 
 
-__all__ = ["rank_icebox", "snapshot_ranking_debug"]
+__all__ = ["rank_icebox", "snapshot_ranking_debug", "ranking_debug_payload"]

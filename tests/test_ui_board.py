@@ -2,6 +2,7 @@
 
 from aeroapply.config import RankingWeights
 from aeroapply.db import repo
+from aeroapply.sourcing.scheduler import ranking_debug_payload
 from aeroapply.ui import board
 
 WEIGHTS = RankingWeights(title=0.35, location=0.25, recency=0.20, competition=0.10, urgency=0.10)
@@ -47,3 +48,30 @@ def test_manual_override_trumps_to_top(monkeypatch):
 def test_empty_icebox(monkeypatch):
     monkeypatch.setattr(repo, "fetch_icebox", lambda conn, uid: [])
     assert board.build_board(conn=None, user_id="u1", weights=WEIGHTS) == []
+
+
+def test_ranking_debug_payload_shape():
+    payload = ranking_debug_payload({"title": 1.0}, 0.67, WEIGHTS)
+    assert payload["components"] == {"title": 1.0}
+    assert payload["execution_priority"] == 0.67
+    assert payload["weights"] == WEIGHTS.model_dump()
+
+
+def test_snapshot_row_persists_the_card_snapshot(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        repo, "set_ranking_debug",
+        lambda conn, app_id, payload: captured.update(app_id=app_id, payload=payload),
+    )
+    row = board.BoardRow(
+        application_id="app-ai", title="AI Product Manager", company="Acme",
+        location="Remote", remote_mode="remote", manual_override=False,
+        components={"title": 1.0, "location": 1.0, "recency": 0.1,
+                    "competition": 0.5, "urgency": 0.0},
+        execution_priority=0.67,
+    )
+
+    board.snapshot_row(conn=None, row=row, weights=WEIGHTS)
+
+    assert captured["app_id"] == "app-ai"
+    assert captured["payload"] == ranking_debug_payload(row.components, row.execution_priority, WEIGHTS)
