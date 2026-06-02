@@ -233,3 +233,46 @@ def test_kanban_autosnapshot_makes_curation_paired():
     finally:
         conn.rollback()
         conn.close()
+
+
+def test_wip_scheduler_promotes_topn_and_is_idempotent():
+    from aeroapply.config import load_profile
+    from aeroapply.connectors.base import NormalizedPosting
+    from aeroapply.db import repo
+    from aeroapply.sourcing.scheduler import promote_to_queued
+
+    profile = load_profile(EXAMPLE)
+    postings = [
+        NormalizedPosting(source_key="greenhouse", external_id=f"zzq{i}", company="ZZTestCo",
+                          title="ZZTEST AI Product Manager", remote_mode="remote", location="Remote")
+        for i in range(4)
+    ]
+
+    conn = repo.connect(os.environ["DATABASE_URL"])
+    try:
+        user_id = repo.ensure_operator(conn, profile)
+        repo.upsert_icebox(conn, user_id, postings)
+
+        promoted = promote_to_queued(conn, user_id, profile.ranking_weights, wip_limit=2)
+        assert len(promoted) == 2
+
+        queued = conn.execute(
+            "SELECT count(*) FROM application "
+            "WHERE user_id = %s AND wip_status = 'queued' AND status = 'queued'",
+            (user_id,),
+        ).fetchone()[0]
+        assert queued == 2
+
+        # idempotent: WIP is now full at the limit, so a re-run promotes nothing
+        assert promote_to_queued(conn, user_id, profile.ranking_weights, wip_limit=2) == []
+
+        # each promotion wrote a 'system' queued audit event
+        ev = conn.execute(
+            """SELECT actor, event_type FROM application_event
+               WHERE application_id = %s ORDER BY created_at DESC LIMIT 1""",
+            (promoted[0],),
+        ).fetchone()
+        assert ev == ("system", "queued")
+    finally:
+        conn.rollback()
+        conn.close()

@@ -46,8 +46,8 @@ uv run ruff check . && uv run mypy src
 uv run aeroapply source --board <greenhouse_token>   # fetch → bouncer → icebox (read-only)
 uv run aeroapply rank                                # Python-ranked Icebox (rank_jobs, not the view)
 uv run aeroapply ui                                  # Streamlit Kanban-lite: ranked Icebox + Promote/Drop
+uv run aeroapply schedule                            # WIP scheduler: promote top-N icebox → queued
 # (scaffolds — wired up across later sprints)
-uv run aeroapply schedule             # WIP scheduler → execution graph
 uv run uvicorn services.email_webhook.app:app   # inbound-email webhook (prod: Railway)
 ```
 

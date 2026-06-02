@@ -29,6 +29,9 @@ EVENT_HUMAN_APPROVED_UNCHANGED = "human_approved_unchanged"
 EVENT_HUMAN_EDITED = "human_edited"
 EVENT_HUMAN_REJECTED = "human_rejected"
 
+# Automated Supervisor/Scheduler events (actor='system'):
+EVENT_QUEUED = "queued"  # icebox -> queued promotion (EPIC-ICE-2)
+
 # The calibration label for a curation action, decoupled from the event_type verb.
 _CURATION_LABELS = {EVENT_PROMOTE: "manual_override", EVENT_DROP: "hard_negative"}
 
@@ -153,11 +156,12 @@ def _event(
     application_id: str,
     event_type: str,
     payload: dict[str, Any] | None = None,
+    actor: str = "human",
 ) -> None:
     conn.execute(
         """INSERT INTO application_event (application_id, event_type, actor, payload)
-           VALUES (%s, %s, 'human', %s)""",
-        (application_id, event_type, Jsonb(payload if payload is not None else {})),
+           VALUES (%s, %s, %s, %s)""",
+        (application_id, event_type, actor, Jsonb(payload if payload is not None else {})),
     )
 
 
@@ -209,9 +213,30 @@ def set_ranking_debug(
     )
 
 
+def count_active_wip(conn: psycopg.Connection, user_id: str) -> int:
+    """Count applications occupying an execution slot (queued or active) for the operator."""
+    row = conn.execute(
+        """SELECT count(*) FROM application
+           WHERE user_id = %s AND wip_status IN ('queued', 'active')""",
+        (user_id,),
+    ).fetchone()
+    return int(row[0]) if row else 0
+
+
+def mark_queued(conn: psycopg.Connection, application_id: str, payload: dict[str, Any]) -> None:
+    """Promote one Icebox row to queued and write a 'system' audit event (EPIC-ICE-2)."""
+    conn.execute(
+        """UPDATE application SET wip_status = 'queued', status = 'queued', updated_at = now()
+           WHERE id = %s""",
+        (application_id,),
+    )
+    _event(conn, application_id, EVENT_QUEUED, payload, actor="system")
+
+
 __all__ = [
     "UpsertCounts", "connect", "ensure_operator", "upsert_icebox",
     "fetch_icebox", "promote", "drop", "set_ranking_debug",
+    "count_active_wip", "mark_queued",
     "EVENT_PROMOTE", "EVENT_DROP", "EVENT_HUMAN_APPROVED_UNCHANGED",
-    "EVENT_HUMAN_EDITED", "EVENT_HUMAN_REJECTED",
+    "EVENT_HUMAN_EDITED", "EVENT_HUMAN_REJECTED", "EVENT_QUEUED",
 ]

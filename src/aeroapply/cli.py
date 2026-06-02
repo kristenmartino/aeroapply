@@ -1,6 +1,6 @@
-"""AeroApply CLI. Read-only sourcing + the Streamlit Kanban-lite are wired up
-(`source`, `rank`, `ui`); there is no apply/submit/credential path — by design for
-this stage."""
+"""AeroApply CLI. Read-only sourcing, the WIP scheduler, and the Streamlit Kanban-lite are
+wired up (`source`, `rank`, `schedule`, `ui`); there is no apply/submit/credential path —
+by design for this stage."""
 
 from __future__ import annotations
 
@@ -50,6 +50,20 @@ def _cmd_rank(args: argparse.Namespace) -> None:
         print(f"persisted ranking_debug for {len(ranked)} icebox rows")
 
 
+def _cmd_schedule(args: argparse.Namespace) -> None:
+    from aeroapply.config import get_profile, get_settings
+    from aeroapply.db import repo
+    from aeroapply.sourcing.scheduler import promote_to_queued
+
+    settings = get_settings()
+    profile = get_profile()
+    wip_limit = profile.scheduler.wip_limit
+    with repo.connect(settings.database_url) as conn:
+        user_id = repo.ensure_operator(conn, profile)
+        promoted = promote_to_queued(conn, user_id, profile.ranking_weights, wip_limit)
+    print(f"promoted {len(promoted)} icebox -> queued (wip_limit={wip_limit})")
+
+
 def _cmd_ui(args: argparse.Namespace) -> None:
     import subprocess
     import sys
@@ -74,7 +88,8 @@ def main() -> None:
                         help="snapshot ranking_debug for the Icebox (writes); default is read-only")
     p_rank.set_defaults(func=_cmd_rank)
 
-    sub.add_parser("schedule", help="run the WIP scheduler once (TODO)")
+    p_sched = sub.add_parser("schedule", help="promote top-N icebox -> queued (WIP-limited)")
+    p_sched.set_defaults(func=_cmd_schedule)
     p_ui = sub.add_parser("ui", help="launch the Streamlit Kanban-lite over the Icebox")
     p_ui.set_defaults(func=_cmd_ui)
 

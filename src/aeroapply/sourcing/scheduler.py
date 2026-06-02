@@ -54,4 +54,35 @@ def snapshot_ranking_debug(
     return ranked
 
 
-__all__ = ["rank_icebox", "snapshot_ranking_debug", "ranking_debug_payload"]
+def promote_to_queued(
+    conn: psycopg.Connection, user_id: str, weights: RankingWeights, wip_limit: int
+) -> list[str]:
+    """Promote the top-ranked Icebox rows to queued, up to the WIP limit (EPIC-ICE-2).
+
+    Tops the queue up to ``wip_limit`` (counting already queued/active rows), so it is
+    idempotent: a re-run with a full queue promotes nothing. Selection reuses
+    ``rank_icebox`` so ``manual_override`` rows (the +100 trump) lead organic ones. Each
+    promotion writes a 'system' ``application_event`` via ``repo.mark_queued``. The caller
+    owns the transaction and commits. Returns the promoted application ids.
+    """
+    capacity = max(0, wip_limit - repo.count_active_wip(conn, user_id))
+    if capacity == 0:
+        return []
+    promoted: list[str] = []
+    for app_id, scored in rank_icebox(conn, user_id, weights)[:capacity]:
+        repo.mark_queued(
+            conn,
+            app_id,
+            {
+                "reason": "scheduler",
+                "execution_priority": scored.execution_priority,
+                "wip_limit": wip_limit,
+            },
+        )
+        promoted.append(app_id)
+    return promoted
+
+
+__all__ = [
+    "rank_icebox", "snapshot_ranking_debug", "ranking_debug_payload", "promote_to_queued",
+]
