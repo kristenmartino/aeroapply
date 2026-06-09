@@ -54,11 +54,13 @@ Reference implementation: **`src/aeroapply/sourcing/bouncer.py`**. Thresholds an
 
 | # | Filter | Rule | Drop condition | Source of truth |
 |---|---|---|---|---|
-| 1 | **Geo fence** | Remote → keep. Hybrid/Onsite → keep only within the configured commute radius of the home anchor (from `config/profile.yaml`) via geopy | onsite/hybrid AND distance > radius | `max_commute_miles` |
+| 1 | **Geo fence** | Remote → keep. Hybrid/Onsite → geocode the free-text location (see below), then keep only within the configured commute radius of the home anchor via geopy | onsite/hybrid AND distance > radius, or location unresolvable | `max_commute_miles` |
 | 2 | **Seniority / industry** | Regex-drop wrong-level or wrong-domain titles | title matches `drop_title_regex` (seniority junk like `junior\|entry-level\|intern` plus operator-chosen industry exclusions) | `drop_title_regex` |
 | 3 | **Salary floor** | Evaluate the **MAX** of the posted band against the floor; **unlisted (0/NULL) passes through** to the Icebox | `salary_max > 0` AND `salary_max < floor` | `min_salary_floor` |
 | 4 | **Clearance / visa gate** | Drop roles incompatible with the operator's actual work authorization | text matches `\b(active ts/sci\|top secret\|polygraph\|clearance required\|no c2c\|w2 only\|us citizens only)\b` | `legal_blocker_regex` |
 | 5 | **Ghost-job** | Drop stale listings unlikely to still be live | `posted_at` older than **45 days** | `max_age_days: 45` |
+
+**Geocoding the free-text location (#89).** ATS feeds (Greenhouse/Lever/Ashby) give a free-text `location` with no lat/lon, so the geo fence can't run on them directly. The bouncer's geo gate resolves the string via `src/aeroapply/sourcing/geocoding.py`: a zero-network **static centroid table** of common US cities (centroid error ≪ a 40-mile fence), with an optional rate-limited **Nominatim fallback** (opt in with `AEROAPPLY_GEOCODER=nominatim`) for misses, all behind an in-process cache so each distinct string is resolved once. A string nothing can place drops as **`unresolvable location`** — a *distinct* reason from `outside commute radius`, so calibration can tell a genuinely out-of-range posting from one we simply couldn't geocode. Remote postings short-circuit before any lookup. With no geocoder configured, the gate keeps its prior safe-drop behavior (non-remote without coords → drop).
 
 Two rules carry the most subtlety and must not regress:
 
