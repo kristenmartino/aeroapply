@@ -8,7 +8,7 @@
 
 > Your autonomous job-application co-pilot — sources, tailors, applies, and tracks, with you in the loop only when it matters.
 
-**Status:** planning + skeleton complete · **Operator:** Senior BA/PM → AI Product Manager (Jupiter, FL).
+**Status:** planning + skeleton complete · **Operator:** single-operator personal tool (persona details live in the gitignored `config/profile.yaml`).
 
 ### Links
 - **GitHub repo (public):** https://github.com/kristenmartino/aeroapply

@@ -1,0 +1,56 @@
+# FICTIONAL test persona — Casey Morgan, hybrid product designer, NO salary floor.
+# Exercises: salary_floor=0 (unlisted AND low-band postings both pass through),
+# hybrid hints on two cities, and location-heavy ranking weights. All values invented.
+
+operator:
+  name: "Casey Morgan"
+  primary_email: "casey@example.com"
+  agent_email: "casey.agents@example.com"
+  headline: "Product Designer (UX/UI)"
+  work_auth: "US Citizen"
+  home:
+    label: "Denver, CO"
+    lat: 39.7392
+    lon: -104.9903
+
+search_profile:
+  name: "Denver design"
+  locations: ["Remote", "Denver, CO", "Boulder, CO"]
+  distance_miles: 30
+  remote_modes: ["remote", "hybrid", "onsite"]
+  languages: ["English"]
+  salary_floor: 0               # no floor: nothing is dropped on salary
+  currency: "USD"
+  include_linkedin: true
+  exclude_companies: []
+
+target_roles:
+  - { title: "Product Designer",  alignment: 1.0 }
+  - { title: "UX Designer",       alignment: 1.0 }
+  - { title: "UI Designer",       alignment: 0.7 }
+  - { title: "Design Lead",       alignment: 0.7 }
+
+bouncer:
+  max_commute_miles: 30
+  min_salary_floor: 0
+  max_age_days: 45
+  drop_title_regex: '\b(junior|entry[\s-]?level|intern(ship)?|graduate)\b'
+  legal_blocker_regex: '\b(active ts/sci|top secret|polygraph|clearance required)\b'
+
+ranking_weights:
+  title: 0.30
+  location: 0.35
+  recency: 0.15
+  competition: 0.10
+  urgency: 0.10
+
+scheduler:
+  wip_limit: 5
+  cycle_minutes: 180
+
+autonomy:
+  default_mode: "review"
+  auto_submit_sources: []
+  always_human_sources: ["workday", "taleo", "linkedin", "custom"]
+  min_ats_score: 0.90
+  min_agent_confidence: 0.95

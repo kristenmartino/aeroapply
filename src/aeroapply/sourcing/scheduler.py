@@ -13,14 +13,14 @@ import psycopg
 
 from aeroapply.config import RankingWeights
 from aeroapply.db import repo
-from aeroapply.sourcing.ranking import ScoredJob, rank_jobs
+from aeroapply.sourcing.ranking import RankingPersona, ScoredJob, rank_jobs
 
 
 def rank_icebox(
-    conn: psycopg.Connection, user_id: str, weights: RankingWeights
+    conn: psycopg.Connection, user_id: str, weights: RankingWeights, persona: RankingPersona
 ) -> list[tuple[str, ScoredJob]]:
     rows = repo.fetch_icebox(conn, user_id)
-    return rank_jobs(rows, weights)
+    return rank_jobs(rows, weights, persona)
 
 
 def ranking_debug_payload(
@@ -35,7 +35,7 @@ def ranking_debug_payload(
 
 
 def snapshot_ranking_debug(
-    conn: psycopg.Connection, user_id: str, weights: RankingWeights
+    conn: psycopg.Connection, user_id: str, weights: RankingWeights, persona: RankingPersona
 ) -> list[tuple[str, ScoredJob]]:
     """Persist each Icebox row's ranking snapshot (#80) and return the same ranking.
 
@@ -44,7 +44,7 @@ def snapshot_ranking_debug(
     used) into ``application.ranking_debug`` for calibration. Does NOT mutate ranking
     behavior; the caller owns the transaction and commits.
     """
-    ranked = rank_icebox(conn, user_id, weights)
+    ranked = rank_icebox(conn, user_id, weights, persona)
     for app_id, scored in ranked:
         repo.set_ranking_debug(
             conn,

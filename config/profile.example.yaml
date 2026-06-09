@@ -1,43 +1,46 @@
-# AeroApply operator profile & filters.
+# AeroApply operator profile & filters — FICTIONAL example template.
 # Copy to config/profile.yaml (gitignored) and fill with your real values.
-# Concrete PII lives HERE, never in committed docs or source.
+# Concrete PII lives in config/profile.yaml only, never in committed files; every
+# value below (name, city, coordinates, salary floor, target titles) is invented.
+# More fictional personas for testing live in config/profiles/.
 
 operator:
-  name: "Your Name"
+  name: "Alex Example"
   primary_email: "you@example.com"          # high-priority items are forwarded here
   agent_email: "you.agents@example.com"      # dedicated inbound address (Mailgun/SendGrid route)
-  headline: "Senior BA / PM → AI Product Manager"
+  headline: "Business Analyst → Product Manager"
   work_auth: "US Citizen"                     # drives the clearance/visa bouncer gate
   home:
-    label: "Jupiter, FL"
-    lat: 26.9342
-    lon: -80.0942
+    label: "Springfield, IL"
+    lat: 39.7817
+    lon: -89.6501
 
 # The "filters" the app sources against.
 search_profile:
-  name: "AI PM track"
-  locations: ["Remote", "Jupiter, FL", "West Palm Beach, FL"]
+  name: "PM track"
+  locations: ["Remote", "Springfield, IL"]
   distance_miles: 40                          # geo fence for hybrid/onsite
   remote_modes: ["remote", "hybrid"]          # remote | hybrid | onsite
   languages: ["English"]
-  salary_floor: 115000                        # evaluated vs the MAX of a posted band
+  salary_floor: 100000                        # evaluated vs the MAX of a posted band
   currency: "USD"
   include_linkedin: true                      # on linkedin / not on linkedin
   exclude_companies: []
 
 # Target role names + alignment multipliers (feed the ranking formula).
 target_roles:
-  - { title: "AI Product Manager",        alignment: 1.0 }
-  - { title: "AI Solutions Architect",    alignment: 1.0 }
-  - { title: "Senior Business Analyst",   alignment: 0.6 }
-  - { title: "Technical Project Manager", alignment: 0.6 }
+  - { title: "Product Manager",      alignment: 1.0 }
+  - { title: "Solutions Architect",  alignment: 1.0 }
+  - { title: "Business Analyst",     alignment: 0.6 }
+  - { title: "Project Manager",      alignment: 0.6 }
 
 # SourcingBouncer edge-filter rules (drop BEFORE any DB write).
 bouncer:
   max_commute_miles: 40
-  min_salary_floor: 115000
+  min_salary_floor: 100000
   max_age_days: 45
-  drop_title_regex: '\b(junior|associate|entry[\s-]?level|intern|grad|construction|civil|healthcare|clinical|mechanical)\b'
+  # Seniority junk + any industries you want excluded (add your own, e.g. |healthcare|construction).
+  drop_title_regex: '\b(junior|associate|entry[\s-]?level|intern(ship)?|graduate)\b'
   legal_blocker_regex: '\b(active ts/sci|top secret|polygraph|clearance required|no c2c|w2 only|us citizens only)\b'
 
 # execution_priority weights (must sum to 1.0 excluding the manual_override trump).

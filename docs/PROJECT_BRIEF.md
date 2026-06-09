@@ -17,11 +17,11 @@
 
 AeroApply is a **single-operator personal tool** (multi-tenant is explicitly out of scope for v1, though the schema is tenant-ready).
 
-- **Primary operator:** a Senior Business Analyst / Project Manager **pivoting into an AI Product Manager** track. Based in **Jupiter, FL** (commute anchor configured in `config/profile.yaml`), open to **remote** or **South-Florida hybrid** (Jupiter / West Palm corridor).
-- **Target titles (priority order):** AI Product Manager, AI Solutions Architect (core, alignment `1.0`); Senior Business Analyst, Technical Project Manager (adjacent fallback, alignment `0.6`).
-- **Hard salary floor:** evaluate the **max** of a posted band; drop if max `< $115,000`. Unlisted salary passes through to the Icebox.
+- **Operator shape:** a professional pivoting between adjacent role tracks, with a home commute anchor, open to **remote** or **local hybrid** within a configured radius.
+- **Target titles:** a small set of **core** titles (alignment `1.0`) plus **adjacent fallback** titles (alignment `0.6`), configured in `profile.target_roles`.
+- **Hard salary floor:** evaluate the **max** of a posted band against the configured floor; drop only when a stated max falls below it. Unlisted salary passes through to the Icebox.
 
-> **PII boundary:** concrete personal values (name, exact address/coords, salary floor, target titles, scoring weights, credentials, email addresses) live in `config/profile.yaml` and `.env` — **never hard-coded into committed docs or source.** `config/profile.example.yaml` ships illustrative defaults. Docs refer to the persona at the role/region level only.
+> **PII boundary:** concrete personal values (name, exact address/coords, salary floor, target titles, scoring weights, credentials, email addresses) live in `config/profile.yaml` and `.env` — **never hard-coded into committed docs or source.** Committed examples are **fictional**: `config/profile.example.yaml` is the "Alex Example" (Springfield, IL) template, and `config/profiles/` carries invented test personas. Code defaults (bouncer, ranking, the frozen debug view) mirror the fictional example persona only.
 
 ## 3. Problem & goals
 
@@ -106,8 +106,8 @@ Computed in **Python** by `src/aeroapply/sourcing/ranking.py` from `profile.rank
 | Factor | Weight | Rule |
 |---|---|---|
 | Manual promote | trump | `manual_override = TRUE` → `+100.0` |
-| Title alignment | 35% | AI Product Manager/Solutions Architect `1.0`; Business Analyst/Tech PM `0.6`; else `0.3` |
-| Location & flexibility | 25% | Remote `1.0`; Jupiter/West Palm hybrid `0.8`; else `0.0` |
+| Title alignment | 35% | best-matching `profile.target_roles` alignment (core `1.0`, adjacent `0.6`); else baseline `0.3` |
+| Location & flexibility | 25% | Remote `1.0`; configured hybrid-hint locations `0.8`; else `0.0` |
 | Recency | 20% | ≤2 days `1.0`; ≤7 days `0.5`; else `0.1` |
 | Competition (applicants) | 10% | `<50` → `1.0`; `<150` → `0.5`; else `0.0` |
 | Urgency (closing soon) | 10% | closes ≤3 days → `1.0`; else `0.0` |
@@ -115,9 +115,9 @@ Computed in **Python** by `src/aeroapply/sourcing/ranking.py` from `profile.rank
 Weights are operator-tunable in `config/profile.yaml`.
 
 ### 5.3 SourcingBouncer edge filters (drop *before* DB write)
-1. **Geo fence:** Remote → keep; Hybrid/Onsite → keep only within 40 mi of Jupiter (geopy); else drop.
-2. **Seniority/industry:** regex-drop titles with `junior|associate|entry-level|intern|grad|construction|civil|healthcare|clinical|mechanical`.
-3. **Salary floor:** parse band **max**; drop if max > 0 **and** < `$115k`. Unlisted (0) passes.
+1. **Geo fence:** Remote → keep; Hybrid/Onsite → keep only within the configured commute radius of the home anchor (geopy); else drop.
+2. **Seniority/industry:** regex-drop titles matching `drop_title_regex` (seniority junk like `junior|entry-level|intern` plus any operator-chosen industry exclusions).
+3. **Salary floor:** parse band **max**; drop if max > 0 **and** < the configured floor. Unlisted (0) passes.
 4. **Clearance/visa gates:** drop on `active ts/sci|top secret|polygraph|clearance required|no c2c|w2 only|us citizens only` (per operator's actual work authorization).
 5. **Ghost-job:** drop if `posted_at` older than 45 days.
 

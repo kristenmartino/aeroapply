@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
-from aeroapply.sourcing.bouncer import SourcingBouncer
+from aeroapply.sourcing.bouncer import BouncerConfig, SourcingBouncer
 
 
 def test_parse_max_salary_handles_messy_bands():
@@ -12,7 +12,8 @@ def test_parse_max_salary_handles_messy_bands():
 
 
 def test_low_salary_is_dropped():
-    b = SourcingBouncer()
+    # The default floor is 0 (off) — gates only fire when a profile configures one.
+    b = SourcingBouncer(BouncerConfig(min_salary_floor=120_000))
     keep, _ = b.should_keep(
         {"title": "AI Product Manager", "description": "", "salary_text": "$80k-$100k", "remote_mode": "remote"}
     )
@@ -20,7 +21,7 @@ def test_low_salary_is_dropped():
 
 
 def test_unlisted_salary_passes_through():
-    b = SourcingBouncer()
+    b = SourcingBouncer(BouncerConfig(min_salary_floor=120_000))
     keep, _ = b.should_keep(
         {"title": "AI Product Manager", "description": "Great role", "remote_mode": "remote"}
     )

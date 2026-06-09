@@ -18,6 +18,7 @@ import streamlit as st
 
 from aeroapply.config import RankingWeights, get_profile, get_settings
 from aeroapply.db import repo
+from aeroapply.sourcing.ranking import RankingPersona
 from aeroapply.ui.board import BoardRow, build_board, snapshot_row
 
 
@@ -71,7 +72,8 @@ def main() -> None:
     try:
         user_id = repo.ensure_operator(conn, profile)
         conn.commit()
-        board = build_board(conn, user_id, profile.ranking_weights)
+        persona = RankingPersona.from_profile(profile)
+        board = build_board(conn, user_id, profile.ranking_weights, persona)
         if not board:
             st.info("Icebox is empty — run `aeroapply source --board <token>` to fill it.")
             return

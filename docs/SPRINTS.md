@@ -35,7 +35,7 @@ Dependency spine: **S1 → S2 → S3 → S4 → S5 → S6**. S2 cannot start the
 - Config loader: parse `config/profile.yaml` (operator, `search_profile`, `bouncer`, `ranking_weights`, `scheduler`, `autonomy`) into typed Pydantic models.
 - **Model-router skeleton** (`src/aeroapply/models/router.py`): reads `model_config[node]` → `{provider, model_id, params, fallback}`; registers `claude-opus-4-8` (1M context, fast mode), `claude-sonnet-4-6`, `claude-haiku-4-5`, and a local Ollama provider. No node calls it yet beyond sourcing.
 - **Connectors** (Tier A, API): Greenhouse, Lever, Ashby (`src/aeroapply/connectors/`). Seed `source` rows with `kind='api'`, `autonomy_tier='A'`.
-- **SourcingBouncer** (`src/aeroapply/sourcing/bouncer.py`): the five edge filters — geo fence (40 mi, geopy), seniority/industry regex, salary-floor (band **max** vs `$115k`, unlisted passes), clearance/visa gate, 45-day ghost-job — dropping junk *before* any DB write.
+- **SourcingBouncer** (`src/aeroapply/sourcing/bouncer.py`): the five edge filters — geo fence (40 mi, geopy), seniority/industry regex, salary-floor (band **max** vs the configured floor, unlisted passes), clearance/visa gate, 45-day ghost-job — dropping junk *before* any DB write.
 - **Dedupe/fingerprint**: `fingerprint = sha256(company+title+location)` → `job.fingerprint UNIQUE`; `ON CONFLICT DO NOTHING`.
 - **Icebox writes**: survivors insert a `job` row and an `application` row at `wip_status='icebox'`, `status='sourced'`.
 - **`v_icebox_ranked`**: ship verbatim from `bootstrap.sql` (weighted CASE; `manual_override → +100`).
@@ -64,7 +64,7 @@ for raw in connector.fetch():           # greenhouse | lever | ashby
 **Scope / stories.**
 - **Supervisor + WIP scheduler** (`src/aeroapply/graph/`): every `cycle_minutes` (180), read `v_icebox_ranked`, promote top-`wip_limit` (5) to `wip_status='queued'`, `status='queued'`.
 - **`verify_open`** (graph's *first* node): HTTP-ping `job.portal_url`; on 404 / "no longer accepting" set `status='closed_before_execution'` and pull the next job — no frontier tokens wasted.
-- **`select_resume`**: choose `resume_variant` by `role_focus` vs target title (AI PM base vs Senior BA base).
+- **`select_resume`**: choose `resume_variant` by `role_focus` vs target title (core-track base vs adjacent-track base).
 - **Generator ⇄ ATS-Critic cyclic subgraph**: Generator (`claude-opus-4-8`, fast mode, `temperature≈0.6`) drafts; ATS-Critic (`claude-sonnet-4-6`, `temperature=0`) scores keyword coverage and flags gaps; loop until `ats_score ≥ threshold` or max-iteration cap. See `TAILORING_AND_ATS.md`.
 - **Postgres checkpointer**: `langgraph-checkpoint-postgres` over psycopg3 `AsyncConnectionPool`; `await checkpointer.setup()` auto-creates `checkpoints*`; `thread_id = application.id`.
 - **Resume/QA embeddings + retrieval**: chunk resumes into `resume_chunk` and seed `qa_history`, embed with `text-embedding-3-small` (1536-d — must match the schema vector width), HNSW cosine retrieval feeding the Generator.

@@ -6,18 +6,18 @@
 
 ## 1. Overview & vision
 
-AeroApply is a **persistent, always-on multi-agent daemon** that runs a single operator's job hunt end-to-end: it sources relevant roles 24/7, tailors a chosen resume variant per posting through a `Generator ⇄ ATS-Critic` cyclic loop, writes cover letters, answers screening questions from the operator's own history, creates portal accounts, submits through the right channel (clean ATS API or Playwright on DOM portals), and tracks the full lifecycle through a dedicated email inbox. The product thesis: automate the **mechanical 90%** of every application and reserve the operator's attention for the **judgment 10%** — which roles to chase, ambiguous or legal questions, and final sign-off on reach roles.
+AeroApply is a **persistent, always-on multi-agent daemon** that runs a single operator's job hunt end-to-end: it sources relevant roles 24/7, tailors a chosen resume variant per posting through a `Generator ⇄ ATS-Critic` cyclic loop, writes cover letters, answers screening questions from the operator's own history, creates portal accounts, files the application through the portal's hosted form with operator approval (Playwright — ADR-008), and tracks the full lifecycle through a dedicated email inbox. The product thesis: automate the **mechanical 90%** of every application and reserve the operator's attention for the **judgment 10%** — which roles to chase, ambiguous or legal questions, and final sign-off on reach roles.
 
 Two non-negotiables shape every feature: **never fabricate** an answer (truthful EEO/visa/clearance/self-ID always), and **secure-by-default autonomy** (review-before-submit unless a strict gate ladder is cleared). v1 is explicitly a single-operator personal tool; the schema carries `user_id` everywhere so multi-tenant is *reachable* later, but it is a non-goal now.
 
 ## 2. Operator persona
 
-One persona, referenced at role/region level only (concrete PII lives in `config/profile.yaml`, never in this doc):
+One operator persona, whose concrete values (city, floor, titles) live only in the gitignored `config/profile.yaml` — never in this doc. The committed example template and test fixtures use **fictional** personas (`config/profile.example.yaml`, `config/profiles/`). The persona *shape* the product serves:
 
-- **Role pivot:** a Senior Business Analyst / Project Manager moving into an **AI Product Manager** track.
-- **Region:** **Jupiter, FL**; open to **remote** or **South-Florida hybrid** (Jupiter / West Palm corridor), 40-mi commute fence for anything onsite/hybrid.
-- **Floor:** drop a role if the **max** of its salary band is below the **$115k** floor; unlisted bands pass through to the Icebox.
-- **Target titles:** AI Product Manager and AI Solutions Architect are core (alignment `1.0`); Senior Business Analyst and Technical Project Manager are adjacent fallbacks (alignment `0.6`).
+- **Role pivot:** a professional moving from an established track into an adjacent target track.
+- **Region:** a home commute anchor; open to **remote** or **local hybrid**, with a configured commute fence (default 40 mi) for anything onsite/hybrid.
+- **Floor:** drop a role if the **max** of its salary band is below the configured floor; unlisted bands pass through to the Icebox.
+- **Target titles:** a few core titles (alignment `1.0`) plus adjacent fallbacks (alignment `0.6`).
 
 These values are read from `search_profile`, `target_role`, and the `bouncer` block of the profile YAML — never hard-coded.
 
@@ -39,7 +39,7 @@ Every feature below maps to a canonical mechanism and a concrete table/view.
 
 | # | Feature | Canonical mechanism | Backing store |
 |---|---|---|---|
-| F1 | **Multi-resume intake** | Operator loads N variants ("AI Product Manager — base", "Senior BA — base"); chunked + embedded for AITL retrieval | `resume_variant`, `resume_chunk(embedding vector(1536))` |
+| F1 | **Multi-resume intake** | Operator loads N variants (a base per target track, e.g. core-track and adjacent-track); chunked + embedded for AITL retrieval | `resume_variant`, `resume_chunk(embedding vector(1536))` |
 | F2 | **Target roles** | Titles + alignment multiplier feed the ranking formula | `target_role(title, alignment)` |
 | F3 | **Filters** (locations / distance / remote-hybrid-onsite / language / salary / LinkedIn on-off) | The "search profile"; salary evaluated vs band **max** | `search_profile` |
 | F4 | **24/7 sourcing** | Sourcing Daemon on cheap/local models; `SourcingBouncer` drops junk **before** any DB write | `source`, `job` |
@@ -57,11 +57,11 @@ The "filters" the operator described are columns on `search_profile`, with the s
 
 ```sql
 -- search_profile carries every filter the operator configures
-locations        TEXT[]    -- {'Remote','Jupiter, FL','West Palm Beach, FL'}
+locations        TEXT[]    -- {'Remote','Springfield, IL'} (fictional example)
 distance_miles   INTEGER   -- 40-mi geo fence for hybrid/onsite
 remote_modes     TEXT[]    -- subset of remote|hybrid|onsite
 languages        TEXT[]    -- {'English'}
-salary_floor     INTEGER   -- 115000, compared to band MAX (drop if 0 < max < floor)
+salary_floor     INTEGER   -- compared to band MAX (drop if 0 < max < floor); 0 = no floor
 include_linkedin BOOLEAN   -- "on linkedin / not on linkedin"
 ```
 
@@ -126,8 +126,8 @@ A dedicated `agent_email` (`<operator>.agents@<domain>`) drives two flows. The *
 
 ## 6. User stories
 
-- **As the operator, I want** to upload several resume variants and have AeroApply pick the right one per role, **so that** an AI-PM posting gets my AI-PM resume and a BA posting gets my BA resume — F1, F6 (`resume_variant.is_default`, `select_resume` node).
-- **As the operator, I want** to set my filters once (remote + South-FL hybrid, 40 mi, English, $115k floor, LinkedIn on), **so that** sourcing only surfaces roles I'd actually take — F3 (`search_profile`).
+- **As the operator, I want** to upload several resume variants and have AeroApply pick the right one per role, **so that** a core-track posting gets my core-track resume and an adjacent posting gets the adjacent one — F1, F6 (`resume_variant.is_default`, `select_resume` node).
+- **As the operator, I want** to set my filters once (remote + local hybrid, commute radius, language, salary floor, LinkedIn on/off), **so that** sourcing only surfaces roles I'd actually take — F3 (`search_profile`).
 - **As the operator, I want** the daemon to scrape 24/7 and drop obvious junk before it ever hits my board, **so that** my Icebox is signal, not noise — F4 (`SourcingBouncer`).
 - **As the operator, I want** a ranked Icebox and a small WIP queue, **so that** expensive tailoring only runs on the top handful of roles — F5 (`v_icebox_ranked`, `wip_limit`).
 - **As the operator, I want** tailored resumes scored for ATS keyword coverage before submission, **so that** I clear the resume screener — F6 (`Generator ⇄ ATS-Critic`, `ats_score ≥ 0.90`).

@@ -129,7 +129,7 @@ flowchart TB
     IND["Indeed (browser)"] --> NORM
     CS["Company sites (browser)"] --> NORM
     NORM["normalize → RawPosting\n(company,title,location,remote_mode,\nsalary_min/max,posted_at,closing_date,\nportal_url,portal_type,fingerprint)"] --> BNC
-    BNC["SourcingBouncer\ngeo fence (40mi) · seniority/industry regex ·\nsalary-floor MAX ≥ $115k · clearance/visa ·\nghost-job (>45d)"]
+    BNC["SourcingBouncer\ngeo fence (40mi) · seniority/industry regex ·\nsalary-floor (band MAX vs configured floor) · clearance/visa ·\nghost-job (>45d)"]
   end
   BNC -->|survivors only| ICE[("job + application\nwip_status='icebox', status='sourced'")]
   BNC -. dropped, never written .-> X["/dev/null"]
@@ -138,8 +138,8 @@ flowchart TB
 
 The connector's job is to populate the fields the Bouncer and ranking view depend on:
 
-- `remote_mode`, `location`, `lat`/`lon` → **geo-fence** gate (Remote keeps; Hybrid/Onsite within 40 mi of Jupiter).
-- `salary_max` → **salary-floor** gate (drop if `> 0` and `< 115000`; unlisted/`0` passes through).
+- `remote_mode`, `location`, `lat`/`lon` → **geo-fence** gate (Remote keeps; Hybrid/Onsite within the configured radius of the home anchor).
+- `salary_max` → **salary-floor** gate (drop if `> 0` and below the configured floor; unlisted/`0` passes through).
 - `title` → **seniority/industry** regex gate (`drop_title_regex` in profile).
 - `description`/`requirements` → **clearance/visa** gate (`legal_blocker_regex`).
 - `posted_at` → **ghost-job** gate (drop if older than 45 days).

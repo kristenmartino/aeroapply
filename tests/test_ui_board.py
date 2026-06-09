@@ -2,10 +2,15 @@
 
 from aeroapply.config import RankingWeights
 from aeroapply.db import repo
+from aeroapply.sourcing.ranking import RankingPersona
 from aeroapply.sourcing.scheduler import ranking_debug_payload
 from aeroapply.ui import board
 
 WEIGHTS = RankingWeights(title=0.35, location=0.25, recency=0.20, competition=0.10, urgency=0.10)
+PERSONA = RankingPersona(
+    title_alignments=(("ai product manager", 1.0), ("business analyst", 0.6)),
+    hybrid_hints=("tampa",),
+)
 
 
 def _icebox_rows():
@@ -15,14 +20,14 @@ def _icebox_rows():
         ("app-ai", {"title": "AI Product Manager", "company": "Acme",
                     "location": "Remote", "remote_mode": "remote", **base}, False),
         ("app-ba", {"title": "Business Analyst", "company": "Globex",
-                    "location": "Jupiter, FL", "remote_mode": "onsite", **base}, False),
+                    "location": "Tampa, FL", "remote_mode": "onsite", **base}, False),
     ]
 
 
 def test_build_board_orders_by_execution_priority(monkeypatch):
     monkeypatch.setattr(repo, "fetch_icebox", lambda conn, uid: _icebox_rows())
 
-    rows = board.build_board(conn=None, user_id="u1", weights=WEIGHTS)
+    rows = board.build_board(conn=None, user_id="u1", weights=WEIGHTS, persona=PERSONA)
 
     # AI PM (title 1.0, remote 1.0) outranks Business Analyst (title 0.6) -> first.
     assert [r.application_id for r in rows] == ["app-ai", "app-ba"]
@@ -38,7 +43,7 @@ def test_manual_override_trumps_to_top(monkeypatch):
     rows[1] = (rows[1][0], rows[1][1], True)  # promote the otherwise-lower Business Analyst
     monkeypatch.setattr(repo, "fetch_icebox", lambda conn, uid: rows)
 
-    board_rows = board.build_board(conn=None, user_id="u1", weights=WEIGHTS)
+    board_rows = board.build_board(conn=None, user_id="u1", weights=WEIGHTS, persona=PERSONA)
 
     assert board_rows[0].application_id == "app-ba"
     assert board_rows[0].manual_override is True
@@ -47,7 +52,7 @@ def test_manual_override_trumps_to_top(monkeypatch):
 
 def test_empty_icebox(monkeypatch):
     monkeypatch.setattr(repo, "fetch_icebox", lambda conn, uid: [])
-    assert board.build_board(conn=None, user_id="u1", weights=WEIGHTS) == []
+    assert board.build_board(conn=None, user_id="u1", weights=WEIGHTS, persona=PERSONA) == []
 
 
 def test_ranking_debug_payload_shape():

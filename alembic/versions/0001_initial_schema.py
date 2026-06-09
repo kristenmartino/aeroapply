@@ -47,7 +47,7 @@ CREATE TABLE search_profile (
     distance_miles  INTEGER DEFAULT 40,
     remote_modes    TEXT[] DEFAULT '{remote,hybrid}',
     languages       TEXT[] DEFAULT '{English}',
-    salary_floor    INTEGER DEFAULT 115000,
+    salary_floor    INTEGER DEFAULT 0,
     currency        VARCHAR(8) DEFAULT 'USD',
     include_linkedin BOOLEAN DEFAULT TRUE,
     exclude_companies TEXT[] DEFAULT '{}',
@@ -246,14 +246,14 @@ SELECT
     (
       (CASE WHEN a.manual_override THEN 100.0 ELSE 0.0 END)
       + 0.35 * (CASE
-          WHEN j.title ILIKE '%AI Product Manager%'
-            OR j.title ILIKE '%AI Solutions Architect%' THEN 1.0
+          WHEN j.title ILIKE '%Product Manager%'
+            OR j.title ILIKE '%Solutions Architect%' THEN 1.0
           WHEN j.title ILIKE '%Business Analyst%'
-            OR j.title ILIKE '%Technical Project Manager%' THEN 0.6
+            OR j.title ILIKE '%Project Manager%' THEN 0.6
           ELSE 0.3 END)
       + 0.25 * (CASE
           WHEN j.remote_mode = 'remote' THEN 1.0
-          WHEN j.location ILIKE '%Jupiter%' OR j.location ILIKE '%West Palm%' THEN 0.8
+          WHEN j.location ILIKE '%Springfield%' THEN 0.8
           ELSE 0.0 END)
       + 0.20 * (CASE
           WHEN j.posted_at >= now() - INTERVAL '2 days' THEN 1.0

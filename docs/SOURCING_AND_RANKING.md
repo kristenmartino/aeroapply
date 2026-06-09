@@ -54,15 +54,15 @@ Reference implementation: **`src/aeroapply/sourcing/bouncer.py`**. Thresholds an
 
 | # | Filter | Rule | Drop condition | Source of truth |
 |---|---|---|---|---|
-| 1 | **Geo fence** | Remote → keep. Hybrid/Onsite → keep only within **40 mi** of the Jupiter, FL anchor (from `config/profile.yaml`) via geopy | onsite/hybrid AND distance > 40 mi | `max_commute_miles: 40` |
-| 2 | **Seniority / industry** | Regex-drop wrong-level or wrong-domain titles | title matches `\b(junior\|associate\|entry[\s-]?level\|intern\|grad\|construction\|civil\|healthcare\|clinical\|mechanical)\b` | `drop_title_regex` |
-| 3 | **Salary floor** | Evaluate the **MAX** of the posted band against the floor; **unlisted (0/NULL) passes through** to the Icebox | `salary_max > 0` AND `salary_max < 115000` | `min_salary_floor: 115000` |
+| 1 | **Geo fence** | Remote → keep. Hybrid/Onsite → keep only within the configured commute radius of the home anchor (from `config/profile.yaml`) via geopy | onsite/hybrid AND distance > radius | `max_commute_miles` |
+| 2 | **Seniority / industry** | Regex-drop wrong-level or wrong-domain titles | title matches `drop_title_regex` (seniority junk like `junior\|entry-level\|intern` plus operator-chosen industry exclusions) | `drop_title_regex` |
+| 3 | **Salary floor** | Evaluate the **MAX** of the posted band against the floor; **unlisted (0/NULL) passes through** to the Icebox | `salary_max > 0` AND `salary_max < floor` | `min_salary_floor` |
 | 4 | **Clearance / visa gate** | Drop roles incompatible with the operator's actual work authorization | text matches `\b(active ts/sci\|top secret\|polygraph\|clearance required\|no c2c\|w2 only\|us citizens only)\b` | `legal_blocker_regex` |
 | 5 | **Ghost-job** | Drop stale listings unlikely to still be live | `posted_at` older than **45 days** | `max_age_days: 45` |
 
 Two rules carry the most subtlety and must not regress:
 
-- **Salary floor uses band MAX, not min, and unlisted passes.** A posting of `$95k–$130k` is *kept* because its max (130k) clears the 115k floor — the operator can negotiate toward the top. A posting with no band parsed (`salary_max` is 0 or NULL) is **not** dropped; it flows to the Icebox where the operator decides. We only drop when we have a positive max that is genuinely below floor. This mirrors `search_profile.salary_floor` and brief §2/§5.3.3.
+- **Salary floor uses band MAX, not min, and unlisted passes.** With a `$120k` floor (illustrative), a posting of `$95k–$130k` is *kept* because its max (130k) clears it — the operator can negotiate toward the top. A posting with no band parsed (`salary_max` is 0 or NULL) is **not** dropped; it flows to the Icebox where the operator decides. We only drop when we have a positive max that is genuinely below floor. This mirrors `search_profile.salary_floor` and brief §2/§5.3.3.
 - **The clearance/visa gate is honesty-driven, not preference.** It exists because the operator cannot truthfully claim an active TS/SCI or accept "US citizens only / W2-only / no-C2C" terms that don't match their authorization. This is the *sourcing-side* expression of the brief's never-fabricate rule (§13.1); the execution-side honesty gate in `routing.py` is the second line of defense.
 - **The two regexes match different fields, by design.** The seniority/industry regex (filter 2) is applied to the **title only** (`job.title`), while the clearance/visa regex (filter 4) is applied to the **description** (the role's body text). This scoping prevents false drops: a legitimate `AI Product Manager` posting that merely *mentions* an excluded industry (e.g., "experience in healthcare a plus") somewhere in its body is **not** dropped, because the industry keywords are only matched against the title. Conversely, clearance/visa blockers ("US citizens only", "active TS/SCI") routinely appear in the body, not the title, so that gate must read the description to catch them. Keeping the seniority/industry filter title-scoped is the difference between dropping a wrong-level/wrong-domain *role* and discarding a perfectly valid AI PM role over an incidental word in its description.
 - **Monitor for false positives.** Because regexes are blunt, the structured drop logs (below) should be aggregated to **count drops by reason** (`geo_fence`, `seniority_industry`, `salary_floor`, `clearance_visa`, `ghost_job`). A sudden spike in any one reason — especially `seniority_industry` or `clearance_visa` — is the signal that a pattern is over-matching and needs tightening in `config/profile.yaml`. Tuning the regexes against real per-reason drop rates is the intended feedback loop.
@@ -132,8 +132,8 @@ Ranking is computed in **Python** by `src/aeroapply/sourcing/ranking.py` (`rank_
 | Factor | Weight | Rule |
 |---|---|---|
 | **Manual promote** | trump | `manual_override = TRUE` → `+100.0` |
-| **Title alignment** | 35% | AI Product Manager / AI Solutions Architect → `1.0`; Business Analyst / Technical Project Manager → `0.6`; else `0.3` |
-| **Location & flexibility** | 25% | Remote → `1.0`; Jupiter / West Palm hybrid → `0.8`; else `0.0` |
+| **Title alignment** | 35% | best-matching `profile.target_roles` alignment (core `1.0`, adjacent `0.6`); else baseline `0.3` |
+| **Location & flexibility** | 25% | Remote → `1.0`; configured hybrid-hint locations → `0.8`; else `0.0` |
 | **Recency** | 20% | ≤2 days → `1.0`; ≤7 days → `0.5`; else `0.1` |
 | **Competition (applicants)** | 10% | `<50` → `1.0`; `<150` → `0.5`; else `0.0` |
 | **Urgency (closing soon)** | 10% | closes ≤3 days → `1.0`; else `0.0` |
@@ -150,15 +150,15 @@ SELECT
       (CASE WHEN a.manual_override THEN 100.0 ELSE 0.0 END)
       -- Title alignment (35%)
       + 0.35 * (CASE
-          WHEN j.title ILIKE '%AI Product Manager%'
-            OR j.title ILIKE '%AI Solutions Architect%' THEN 1.0
+          WHEN j.title ILIKE '%Product Manager%'
+            OR j.title ILIKE '%Solutions Architect%' THEN 1.0
           WHEN j.title ILIKE '%Business Analyst%'
-            OR j.title ILIKE '%Technical Project Manager%' THEN 0.6
+            OR j.title ILIKE '%Project Manager%' THEN 0.6
           ELSE 0.3 END)
       -- Location & flexibility (25%)
       + 0.25 * (CASE
           WHEN j.remote_mode = 'remote' THEN 1.0
-          WHEN j.location ILIKE '%Jupiter%' OR j.location ILIKE '%West Palm%' THEN 0.8
+          WHEN j.location ILIKE '%Springfield%' THEN 0.8
           ELSE 0.0 END)
       -- Recency (20%)
       + 0.20 * (CASE

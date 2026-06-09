@@ -79,7 +79,7 @@ stateDiagram-v2
 | Node | Job | Default model |
 |---|---|---|
 | `verify_open` | **First node, stale-queue guard.** HTTP-pings `job.portal_url`; on 404 / "no longer accepting" sets `status='closed_before_execution'` and exits so the Supervisor pulls the next job — zero drafting wasted. | none (httpx) |
-| `select_resume` | Picks the best `resume_variant` for the role (AI PM base vs Senior BA base) by role focus + embedding match against `resume_chunk`. | `claude-haiku-4-5` |
+| `select_resume` | Picks the best `resume_variant` for the role (core-track base vs adjacent-track base) by role focus + embedding match against `resume_chunk`. | `claude-haiku-4-5` |
 | `tailor` (subgraph) | The **Generator ⇄ ATS-Critic** cyclic loop. Generator drafts the tailored resume; the ATS-Critic scores keyword coverage at `temperature=0` and flags gaps; iterate until `ats_score ≥ 0.90` or the iteration cap trips. | gen `claude-opus-4-8` · critic `claude-sonnet-4-6` |
 | `cover_letter` | Writes a cover letter **only if the posting requires one**. | `claude-opus-4-8` |
 | `answer_questions` | AITL: for each screening question, embeds it and similarity-searches `qa_history`. High-confidence match → answer; novel/sensitive (EEO/visa/clearance) → record a blocker, **never fabricate**. | `claude-opus-4-8` (draft) · `claude-haiku-4-5` (match) |
