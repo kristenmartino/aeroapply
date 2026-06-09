@@ -53,10 +53,11 @@ scheduler:
   wip_limit: 5            # top-N jobs promoted from Icebox per cycle
   cycle_minutes: 180      # how often the supervisor pulls work
 
-# Autonomy gates (secure-by-default).
+# Autonomy gates (secure-by-default). v1 ships review-and-approve: every submission
+# needs operator approval, so the allowlist is empty (block-all) — see docs/adr/ADR-008.
 autonomy:
   default_mode: "review"           # review | auto
-  auto_submit_sources: ["greenhouse", "lever", "ashby"]   # Tier A only
+  auto_submit_sources: []          # [] = nothing auto-submits (v1, ADR-008); post-v1 candidates: Tier A hosted forms
   always_human_sources: ["workday", "taleo", "linkedin", "custom"]  # Tier B
   min_ats_score: 0.90
   min_agent_confidence: 0.95

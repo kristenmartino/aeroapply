@@ -117,21 +117,21 @@ def evaluate_submission_route(state) -> str:
 
 ## M4 — Apply connectors + credentials · `07/20–07/31`
 
-**Goal.** Actually submit. Wire Tier-A API submission and one Playwright DOM portal, backed by the Fernet credential vault, and file a **real submission to a Tier-A sandbox**.
+**Goal.** Actually submit. Wire the Playwright hosted-form submitter for Tier-A ATS forms (ADR-008 — candidate-side apply APIs don't exist) plus one Tier-B login portal, backed by the Fernet credential vault, and file a **real operator-approved submission through a Greenhouse-hosted form**.
 
 **Scope.**
-- **API submit (Tier A):** structured payload submitters for Greenhouse/Lever/Ashby; on success set `status = 'submitted'`, `submitted_at`, `wip_status = 'done'`.
-- **Playwright submit** for one DOM portal (Tier B, always HITL-gated): proves the browser path without fighting anti-bot — no CAPTCHA defeat.
+- **Hosted-form submit (Tier A):** Playwright form-fillers for the Greenhouse hosted form first (Lever/Ashby next) — structured fields, no login; operator approves the send; on success set `status = 'submitted'`, `submitted_at`, `wip_status = 'done'`.
+- **Playwright submit** for one login portal (Tier B, always HITL-gated): proves the account/OTP path without fighting anti-bot — no CAPTCHA defeat.
 - **Account creation + Fernet credential vault:** on a portal, derive `company_domain`, look up `portal_credentials`; found → decrypt + log in; missing → generate a strong `secrets` password, sign up, store an encrypted row, attach `credential_id`. Account creation is **Tier B by definition** (HITL). Key from `AEROAPPLY_FERNET_KEY` (dev).
 
-**Exit criteria.** A real submission to a Tier-A sandbox: an approved (or gate-clearing auto) application posts a complete payload to a Greenhouse/Lever/Ashby sandbox endpoint, the response is persisted, `status → submitted`, and the action is recorded in `application_event` (`actor='agent'`).
+**Exit criteria.** A real operator-approved submission: an approved application is filed end-to-end through a Greenhouse-hosted application form via Playwright (test/consented posting), the confirmation is persisted, `status → submitted`, and the action is recorded in `application_event` (`actor='agent'`).
 
 **Key risks.**
 - *Credential-vault correctness.* A Fernet key rotation or env/KMS mismatch bricks every stored login; passwords must never hit logs or the UI in plaintext. Encrypt-at-rest tests + an explicit "no plaintext in logs" assertion.
-- *Premature auto-submit.* M4 makes submission real, so the M3 gate now has teeth. Default posture stays `review`; auto-submit fires only with `auto_submit = TRUE` and all gates green — verify against a sandbox before any live ToS-permitting target.
+- *Premature unattended submission.* M4 makes submission real, so the M3 gate now has teeth. v1 posture is review-and-approve everywhere (`auto_submit_sources: []` — ADR-008); verify the form-filler against a test/consented posting before any live target.
 - *DOM fragility / ban risk.* The Playwright portal will shift selectors; keep pacing conservative (`source.rate_limit`), and on automation blocks escalate rather than evade.
 
-**Demo.** Submit a tailored application to a Greenhouse sandbox via API end-to-end; then run the Playwright path on the chosen DOM portal up to the final confirm, pausing for HITL, and show a freshly-created `portal_credentials` row with the password stored as Fernet ciphertext.
+**Demo.** Approve a tailored application in the Inbox and watch Playwright file it through a Greenhouse-hosted form end-to-end; then run the path on the chosen login portal up to the final confirm, pausing for HITL, and show a freshly-created `portal_credentials` row with the password stored as Fernet ciphertext.
 
 ---
 
@@ -164,25 +164,25 @@ await graph.aupdate_state(
 
 ## M6 — Hardening + deploy · `08/17–08/28`
 
-**Goal.** Ship v1: the full daemon running on **Railway**, review-default, with opt-in Tier-A auto-submit, observable and rate-limit-disciplined.
+**Goal.** Ship v1: the full daemon running on **Railway**, review-and-approve on every submission (ADR-008), observable and rate-limit-disciplined.
 
 **Scope.**
-- **Autonomy calibration:** tune `min_ats_score (0.90)` / `min_agent_confidence (0.95)` against M2–M5 real runs; confirm secure-by-default holds and Tier-A auto-submit only opens per-source via opt-in.
+- **Autonomy calibration:** tune `min_ats_score (0.90)` / `min_agent_confidence (0.95)` against M2–M5 real runs; confirm secure-by-default holds — `auto_submit_sources` stays `[]` in v1, and the gate telemetry establishes the evidence base for any post-v1 opt-in.
 - **Audit / observability:** ensure every agent/human/system action writes `application_event`; per-`run` timing/cost surfaced; structured logs.
 - **Rate-limiting / anti-ban hygiene:** enforce `source.rate_limit` pacing; conservative LinkedIn/DOM posture; escalate on blocks.
 - **Railway deploy:** co-located FastAPI engine + Postgres (the Brief's prod target — **not** Supabase); migrate via Alembic; **secrets/KMS**-backed `AEROAPPLY_FERNET_KEY`; verify the always-on inbound webhook receives 24/7.
 
-**Exit criteria.** Running on Railway, review-default with opt-in Tier-A auto-submit: the sourcing daemon, WIP-limited execution graph, Streamlit UI, and FastAPI email service all run in prod against Railway Postgres; the inbound webhook is reachable; a Tier-A application can auto-submit end-to-end when (and only when) every gate passes; everything else escalates.
+**Exit criteria.** Running on Railway, review-and-approve on every submission: the sourcing daemon, WIP-limited execution graph, Streamlit UI, and FastAPI email service all run in prod against Railway Postgres; the inbound webhook is reachable; an operator-approved application files end-to-end through a hosted form; nothing leaves unattended (ADR-008).
 
 **Key risks.**
 - *Dev→prod parity.* Local Docker Postgres vs Railway can diverge on `pgvector`/extension versions and checkpoint latency. Run the M2 checkpoint and M1 vector tests in the prod environment as a gate.
 - *Secret handling in prod.* The Fernet key moves from `.env` to KMS; a botched migration loses every credential. Stage the key migration with a rollback path.
-- *Unattended auto-submit blast radius.* First prod auto-submits must be watched; cap volume, alert on each, and keep an operator kill-switch.
+- *Submission blast radius.* Even operator-approved, the first prod submissions must be watched; cap volume, alert on each, and keep an operator kill-switch. (Unattended auto-submit is deferred post-v1 — ADR-008.)
 
-**Demo.** On Railway: source → rank → promote → tailor → approve → Tier-A submit, live; send a real inbound OTP webhook and watch a thread resume in prod; open the Streamlit Ledger to show the full audit trail and per-run cost.
+**Demo.** On Railway: source → rank → promote → tailor → approve → hosted-form submit, live; send a real inbound OTP webhook and watch a thread resume in prod; open the Streamlit Ledger to show the full audit trail and per-run cost.
 
 ---
 
 ## Cross-milestone definition of done
 
-Every milestone additionally requires: green CI (`ruff + mypy + pytest`); the `cross-review` build-time gate satisfied (author and reviewer are different vendors); model IDs are config-driven and current (`claude-opus-4-8`, `claude-sonnet-4-6`, `claude-haiku-4-5` — never legacy); no real PII/credentials/resumes in git; and the canonical `status`/`wip_status` tokens unchanged. The non-negotiable invariant across all six: **never fabricate** — any unknown or unmatched legal/EEO/visa/clearance field escalates to the human, and review-before-submit is the default until every auto gate passes.
+Every milestone additionally requires: green CI (`ruff + mypy + pytest`); cross-vendor review satisfied (author and reviewer are different vendors — manual until the CI gate lands under #17, binding thereafter); model IDs are config-driven and current (`claude-opus-4-8`, `claude-sonnet-4-6`, `claude-haiku-4-5` — never legacy); no real PII/credentials/resumes in git; and the canonical `status`/`wip_status` tokens unchanged. The non-negotiable invariant across all six: **never fabricate** — any unknown or unmatched legal/EEO/visa/clearance field escalates to the human, and review-before-submit is the default until every auto gate passes.

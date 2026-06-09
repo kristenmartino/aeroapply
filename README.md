@@ -2,7 +2,7 @@
 
 > Your autonomous job-application co-pilot — sources, tailors, applies, and tracks, with you in the loop only when it matters.
 
-AeroApply is a persistent, always-on multi-agent daemon that sources relevant roles 24/7, tailors a chosen résumé variant for each (with ATS-keyword optimization via a writer⇄critic loop), writes cover letters, answers screening questions from your history, applies through the right channel (clean API or browser), and tracks the full lifecycle through email — pausing for **you** only on genuine product/judgment decisions.
+AeroApply is a persistent, always-on multi-agent daemon that sources relevant roles 24/7, tailors a chosen résumé variant for each (with ATS-keyword optimization via a writer⇄critic loop), writes cover letters, answers screening questions from your history, files the application through the portal's hosted form with your approval, and tracks the full lifecycle through email — pausing for **you** only on genuine product/judgment decisions.
 
 **Status:** pre-alpha / planning + skeleton. **Public-safe scaffold** for a private, single-operator tool — no real résumés, credentials, or PII are committed (real values live only in `.env` and `config/profile.yaml`, both gitignored). See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
@@ -13,13 +13,13 @@ AeroApply is a persistent, always-on multi-agent daemon that sources relevant ro
 ```
 24/7 sourcing → Bouncer edge-filter → Icebox backlog → rank (execution_priority) → WIP scheduler
    → [verify open → select résumé → tailor (Generator⇄ATS-Critic) → cover letter → answer questions]
-   → submission gate (tiered, secure-by-default) → API/Playwright submit → email-driven lifecycle tracking
+   → submission gate (review-and-approve in v1) → Playwright hosted-form submit → email-driven lifecycle tracking
 ```
 
 - **Multi-résumé intake** + many target roles + rich filters (location, distance, remote/hybrid/onsite, language, salary floor, on-LinkedIn-or-not).
 - **Two-tier backlog** so 200 scraped jobs don't spin up 200 expensive agents: a cheap-model **Icebox** feeds a WIP-limited **execution queue**.
 - **Résumé tailoring + ATS** via a cyclic Generator (Opus) ⇄ ATS-Critic (Sonnet/DeepSeek) loop with an overstatement guard.
-- **Tiered autonomy, secure-by-default:** auto-submit only for clean-API sources at high confidence; Workday/LinkedIn/novel-questions/EEO always pause for you.
+- **Tiered autonomy, secure-by-default:** every v1 submission is operator-approved (candidate-side ATS apply APIs don't exist — see ADR-008); Workday/LinkedIn/novel-questions/EEO always pause for you; unattended auto-submit is deferred post-v1.
 - **Account creation + Fernet-encrypted credential vault**; OTP codes injected into a paused browser thread via an inbound-email webhook.
 - **Lifecycle tracking:** hourly IMAP poll → classifier → status updates + forward-to-your-inbox.
 - **Explicit per-node model routing:** pin any node to a specific model + settings (e.g. `claude-opus-4-8`, 1M context, fast mode) as config — never hard-coded.

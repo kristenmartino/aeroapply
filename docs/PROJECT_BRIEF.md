@@ -2,7 +2,7 @@
 
 > **This document is the single source of truth.** Every other doc, the schema, the
 > backlog, and the code must agree with it. If something here conflicts with another
-> doc, this file wins. Last updated: 2026-05-31.
+> doc, this file wins. Last updated: 2026-06-09 (ADR-008 apply-path re-scope).
 
 ---
 
@@ -10,7 +10,7 @@
 
 - **Name:** AeroApply
 - **Tagline:** *Your autonomous job-application co-pilot — sources, tailors, applies, and tracks, with you in the loop only when it matters.*
-- **One-liner:** A persistent, always-on multi-agent daemon that sources relevant roles 24/7, tailors a chosen resume variant for each one (with ATS-keyword optimization via a writer↔critic loop), writes cover letters, answers screening questions from your history, applies through the right channel (API or browser), and tracks the full lifecycle through email — pausing for you only on genuine product/judgment decisions.
+- **One-liner:** A persistent, always-on multi-agent daemon that sources relevant roles 24/7, tailors a chosen resume variant for each one (with ATS-keyword optimization via a writer↔critic loop), writes cover letters, answers screening questions from your history, files the application through the portal's hosted form with your approval (Playwright; see ADR-008), and tracks the full lifecycle through email — pausing for you only on genuine product/judgment decisions.
 - **Repo slug:** `aeroapply` · **Python package:** `aeroapply` · **Visibility:** public (public-safe scaffold; no real operator data committed).
 
 ## 2. Operator persona & configuration
@@ -30,7 +30,7 @@ Job seekers waste hours per application on repetitive, low-judgment work: re-tai
 **Goals**
 1. Maximize *relevant* applications per week without sacrificing accuracy or the operator's professional reputation.
 2. Never fabricate. Truthful answers on every legal/EEO/visa/clearance field — always.
-3. Secure-by-default autonomy: auto-submit only where it is both safe and high-confidence.
+3. Secure-by-default autonomy: every v1 submission is operator-approved; unattended auto-submit is deferred post-v1 (ADR-008).
 4. Full-lifecycle tracking (sourced → applied → interview/offer/rejection) with zero manual data entry.
 5. Explicit, per-node control over which model + settings does each job.
 
@@ -42,7 +42,7 @@ Job seekers waste hours per application on repetitive, low-judgment work: re-tai
 |---|---|---|
 | Orchestration | **LangGraph** (supervisor + nested subgraphs; cyclic critic loops) | Stateful, durable, per-node model control, interrupt/resume HITL. |
 | Runtime shape | **Persistent always-on daemon**, not a one-shot script | Sourcing daemon + WIP-limited execution graph + email-event service. |
-| Autonomy | **Tiered by confidence/source, secure-by-default** | Review-before-submit is the default; auto-submit is *earned* per strict gates. |
+| Autonomy | **Tiered by confidence/source, secure-by-default** | v1 ceiling is **review-and-approve** (every submission operator-approved); unattended auto-submit is deferred post-v1 — ADR-008. |
 | Backend (dev) | **Local Postgres + pgvector via Docker** | Fastest loop; zero cost; instant checkpoint writes. |
 | Backend (prod) | **Railway** (co-located FastAPI engine + Postgres) | Low checkpoint latency; receives inbound email webhooks 24/7. |
 | Vector store | **pgvector in the same Postgres** | One backend; no separate Pinecone/Redis. |
@@ -77,7 +77,7 @@ flowchart TB
     TLR --> COV["Cover letter (if required)"]
     COV --> AQ["Answer questions (AITL, from qa_history)"]
     AQ --> RTE{{"evaluate_submission_route(state)"}}
-    RTE -->|auto-eligible| SUB["Account/creds + Submit (API or Playwright)"]
+    RTE -->|approved| SUB["Account/creds + Submit (Playwright hosted form)"]
     RTE -->|needs human| PAUSE["pause_and_checkpoint → HITL Inbox"]
     PAUSE -.resume.-> SUB
     SUB --> TRK["Track + persist"]
@@ -134,12 +134,12 @@ The graph uses a **conditional edge** before submission — *not* a static `inte
 - **Honesty gate:** any unseen/novel question, or any EEO/visa/clearance/self-ID field not matched to `qa_history` with high confidence → escalate.
 - **Default:** anything not clearing **all** gates → `escalate_to_human_review`.
 
-**Autonomy tiers by source:**
-- **Tier A (auto-submit eligible):** clean-API ATS (Greenhouse, Lever, Ashby) — predictable structured payloads.
-- **Tier B (HITL required):** DOM/browser portals (Workday, Taleo, company sites), LinkedIn — fragile + ban-prone.
+**Autonomy tiers by source** (re-based by ADR-008 — tiers describe *hosted-form predictability*, not API availability; the candidate-side apply APIs assumed by the original tiering are employer-keyed and unobtainable):
+- **Tier A (hosted ATS forms — highest assist quality):** Greenhouse, Lever, Ashby — stable structured forms, usually no login. Submission is via Playwright on the hosted form.
+- **Tier B (login/multi-step portals):** Workday, Taleo, company sites, LinkedIn — accounts, OTP walls, fragile wizards, ban-prone.
 - **Tier C (blocked):** anything requiring fabrication, or sources whose ToS prohibit automation outright.
 
-Default operator posture: **review-before-submit**. Auto-submit is opt-in per role/source and only fires when every gate passes.
+**v1 ceiling (ADR-008):** every submission requires explicit operator approval — `autonomy.auto_submit_sources` ships `[]` (block-all). The gates above are retained as the config-driven mechanism for a *future*, post-v1 unattended mode, which only becomes possible if a sanctioned candidate-side channel emerges.
 
 ## 7. Account creation & credential vault
 - On reaching a portal, extract the base domain (e.g., `company.wd5.myworkdayjobs.com`).
