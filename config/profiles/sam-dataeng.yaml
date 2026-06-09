@@ -1,0 +1,56 @@
+# FICTIONAL test persona — Sam Rivera, remote-only senior data engineer.
+# Exercises: remote-only filtering (hybrid/onsite should all drop), a HIGH salary
+# floor, and weight emphasis on title over location. All values invented.
+
+operator:
+  name: "Sam Rivera"
+  primary_email: "sam@example.com"
+  agent_email: "sam.agents@example.com"
+  headline: "Senior Data Engineer"
+  work_auth: "US Citizen"
+  home:
+    label: "Seattle, WA"
+    lat: 47.6062
+    lon: -122.3321
+
+search_profile:
+  name: "Remote data eng"
+  locations: ["Remote"]
+  distance_miles: 0
+  remote_modes: ["remote"]
+  languages: ["English"]
+  salary_floor: 150000
+  currency: "USD"
+  include_linkedin: false
+  exclude_companies: []
+
+target_roles:
+  - { title: "Data Engineer",        alignment: 1.0 }
+  - { title: "Analytics Engineer",   alignment: 0.8 }
+  - { title: "Data Platform",        alignment: 0.8 }
+  - { title: "Software Engineer",    alignment: 0.4 }
+
+bouncer:
+  max_commute_miles: 0          # remote-only: any posting needing a commute drops
+  min_salary_floor: 150000
+  max_age_days: 30
+  drop_title_regex: '\b(junior|associate|entry[\s-]?level|intern(ship)?|graduate|staff accountant)\b'
+  legal_blocker_regex: '\b(active ts/sci|top secret|polygraph|clearance required)\b'
+
+ranking_weights:
+  title: 0.50
+  location: 0.10
+  recency: 0.20
+  competition: 0.10
+  urgency: 0.10
+
+scheduler:
+  wip_limit: 3
+  cycle_minutes: 240
+
+autonomy:
+  default_mode: "review"
+  auto_submit_sources: []
+  always_human_sources: ["workday", "taleo", "linkedin", "custom"]
+  min_ats_score: 0.90
+  min_agent_confidence: 0.95

@@ -24,13 +24,16 @@ except Exception:  # pragma: no cover
 
 @dataclass(frozen=True)
 class BouncerConfig:
-    home_coords: tuple[float, float] = (26.9342, -80.0942)  # Jupiter, FL
+    """Defaults are NEUTRAL/FICTIONAL placeholders (PII boundary, Brief §2) — the real
+    operator values come from config/profile.yaml via `Profile.to_bouncer_config()`.
+    """
+
+    home_coords: tuple[float, float] = (39.7817, -89.6501)  # Springfield, IL — fictional anchor
     max_commute_miles: float = 40.0
-    min_salary_floor: int = 115_000
+    min_salary_floor: int = 0  # 0 = salary gate off until the profile sets a floor
     max_age_days: int = 45
-    drop_title_regex: str = (
-        r"\b(junior|associate|entry[\s-]?level|intern|grad|construction|"
-        r"civil|healthcare|clinical|mechanical)\b"
+    drop_title_regex: str = (  # seniority junk only; industry exclusions are per-profile
+        r"\b(junior|associate|entry[\s-]?level|intern(ship)?|graduate)\b"
     )
     legal_blocker_regex: str = (
         r"\b(active ts/sci|top secret|polygraph|clearance required|"

@@ -204,7 +204,7 @@ Retention: the audit log and `application`/`job` rows are retained for the opera
 The repository is **public**, so it is treated as a **public-safe scaffold** (brief §1, §13): no real résumé, credential, salary floor, address, or email may be committed. Real operator data lives only in `.env` and `config/profile.yaml` (both gitignored). The PII boundary is structural:
 
 - Concrete personal values live in `config/profile.yaml` (git-ignored) and `.env` — the committed `config/profile.example.yaml` ships only illustrative defaults (`"Your Name"`, `you@example.com`, placeholder coordinates).
-- Docs refer to the operator at the **role/region level only** ("Senior BA/PM pivoting to AI PM, South-Florida/remote") — never by name or exact address.
+- Docs refer to the operator persona in the **abstract only** (role-track shape, commute-anchor concept) — never by name or exact address.
 - `services/email_webhook/app.py`, the credential vault, and connector code are written so that secrets arrive from the environment at runtime and are never hard-coded.
 
 ---

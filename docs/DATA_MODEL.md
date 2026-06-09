@@ -65,13 +65,13 @@ Every UUID PK defaults via `gen_random_uuid()`. User-owned tables cascade-delete
 
 **`app_user`** — the operator (single-tenant in v1, but every owned table carries `user_id`, so the schema is tenant-ready). Key columns: `primary_email` (where high-priority items are forwarded), `agent_email` (the dedicated `<name>.agents@domain` inbound address), `home_lat`/`home_lon` (the commute anchor that powers the geo-fence bouncer gate), and `work_auth` (drives the clearance/visa bouncer gate — e.g. `US Citizen`).
 
-**`search_profile`** — *the filters* the daemon sources against. `locations TEXT[]`, `distance_miles` (default 40), `remote_modes TEXT[]` (subset of `remote|hybrid|onsite`), `languages`, `salary_floor INTEGER` (default 115000, evaluated against the **max** of a posted band), `currency`, `include_linkedin`, `exclude_companies TEXT[]`, `weights JSONB` (per-operator overrides of the `execution_priority` weights), `extra JSONB`, and `active`. These columns mirror `config/profile.example.yaml` field-for-field.
+**`search_profile`** — *the filters* the daemon sources against. `locations TEXT[]`, `distance_miles` (default 40), `remote_modes TEXT[]` (subset of `remote|hybrid|onsite`), `languages`, `salary_floor INTEGER` (default 0 = no floor; evaluated against the **max** of a posted band), `currency`, `include_linkedin`, `exclude_companies TEXT[]`, `weights JSONB` (per-operator overrides of the `execution_priority` weights), `extra JSONB`, and `active`. These columns mirror `config/profile.example.yaml` field-for-field.
 
 **`target_role`** — target titles plus the **alignment multiplier** the ranking formula consumes. `title`, `seniority`, `alignment NUMERIC(3,2)` (1.0 core, 0.6 adjacent), `keywords TEXT[]`, `priority`, `active`.
 
 ## Domain 2 — Knowledge Base (pgvector, AITL retrieval)
 
-**`resume_variant`** — one row per tailorable base resume (e.g. `AI Product Manager - base`, `Senior BA - base`). `profile_name`, `role_focus`, `raw_text` (the full document), `structured_json JSONB` (parsed sections for targeted edits), `is_default`, and `created_at`/`updated_at`.
+**`resume_variant`** — one row per tailorable base resume (one per target track, e.g. `Core track - base`, `Adjacent track - base`). `profile_name`, `role_focus`, `raw_text` (the full document), `structured_json JSONB` (parsed sections for targeted edits), `is_default`, and `created_at`/`updated_at`.
 
 **`resume_chunk`** — `resume_variant` split into embeddable sections for retrieval during tailoring. `resume_id` (cascade), `section_name` (`Experience | Skills | Education | Summary`), `chunk_text`, and `embedding vector(1536)`.
 
@@ -162,14 +162,13 @@ The weighted `CASE` expression encodes the canonical formula:
 
 ```sql
   (CASE WHEN a.manual_override THEN 100.0 ELSE 0.0 END)        -- absolute trump
-  + 0.35 * (CASE WHEN j.title ILIKE '%AI Product Manager%'
-                  OR j.title ILIKE '%AI Solutions Architect%' THEN 1.0
+  + 0.35 * (CASE WHEN j.title ILIKE '%Product Manager%'
+                  OR j.title ILIKE '%Solutions Architect%' THEN 1.0
                  WHEN j.title ILIKE '%Business Analyst%'
-                  OR j.title ILIKE '%Technical Project Manager%' THEN 0.6
+                  OR j.title ILIKE '%Project Manager%' THEN 0.6
                  ELSE 0.3 END)                                  -- title alignment (35%)
   + 0.25 * (CASE WHEN j.remote_mode = 'remote' THEN 1.0
-                 WHEN j.location ILIKE '%Jupiter%'
-                  OR j.location ILIKE '%West Palm%' THEN 0.8
+                 WHEN j.location ILIKE '%Springfield%' THEN 0.8
                  ELSE 0.0 END)                                  -- location & flexibility (25%)
   + 0.20 * (CASE WHEN j.posted_at >= now() - INTERVAL '2 days' THEN 1.0
                  WHEN j.posted_at >= now() - INTERVAL '7 days' THEN 0.5

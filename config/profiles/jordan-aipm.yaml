@@ -1,0 +1,56 @@
+# FICTIONAL test persona — Jordan Avery, AI-PM career pivot (hybrid Gulf-coast anchor).
+# Exercises: core/adjacent title alignment, hybrid geo fence, a real salary floor,
+# and industry exclusions in the title regex. All values invented.
+
+operator:
+  name: "Jordan Avery"
+  primary_email: "jordan@example.com"
+  agent_email: "jordan.agents@example.com"
+  headline: "Senior Business Analyst → AI Product Manager"
+  work_auth: "US Citizen"
+  home:
+    label: "Tampa, FL"
+    lat: 27.9506
+    lon: -82.4572
+
+search_profile:
+  name: "AI PM track"
+  locations: ["Remote", "Tampa, FL", "St. Petersburg, FL"]
+  distance_miles: 40
+  remote_modes: ["remote", "hybrid"]
+  languages: ["English"]
+  salary_floor: 120000
+  currency: "USD"
+  include_linkedin: true
+  exclude_companies: []
+
+target_roles:
+  - { title: "AI Product Manager",        alignment: 1.0 }
+  - { title: "AI Solutions Architect",    alignment: 1.0 }
+  - { title: "Senior Business Analyst",   alignment: 0.6 }
+  - { title: "Technical Project Manager", alignment: 0.6 }
+
+bouncer:
+  max_commute_miles: 40
+  min_salary_floor: 120000
+  max_age_days: 45
+  drop_title_regex: '\b(junior|associate|entry[\s-]?level|intern(ship)?|graduate|construction|civil|clinical|mechanical)\b'
+  legal_blocker_regex: '\b(active ts/sci|top secret|polygraph|clearance required|no c2c|w2 only)\b'
+
+ranking_weights:
+  title: 0.35
+  location: 0.25
+  recency: 0.20
+  competition: 0.10
+  urgency: 0.10
+
+scheduler:
+  wip_limit: 5
+  cycle_minutes: 180
+
+autonomy:
+  default_mode: "review"
+  auto_submit_sources: []
+  always_human_sources: ["workday", "taleo", "linkedin", "custom"]
+  min_ats_score: 0.90
+  min_agent_confidence: 0.95

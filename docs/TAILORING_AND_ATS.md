@@ -16,7 +16,7 @@ Everything tailoring produces lands on the `application` row: `tailored_resume_j
 
 ## 2. Resume-variant selection (vector match: role vs `resume_chunk`)
 
-The operator maintains a small set of base resumes in `resume_variant` (e.g. `'AI Product Manager - base'`, `'Senior BA - base'`), each exploded into `resume_chunk` rows (`section_name ∈ {Experience, Skills, Education, Summary}`) with a `vector(1536)` `embedding` (OpenAI `text-embedding-3-small` by default). The selection node picks the *base* variant whose chunks collectively sit closest to the target job, so the Generator starts from the most relevant raw material instead of editing a generic resume.
+The operator maintains a small set of base resumes in `resume_variant` (e.g. `'Core track - base'`, `'Adjacent track - base'`), each exploded into `resume_chunk` rows (`section_name ∈ {Experience, Skills, Education, Summary}`) with a `vector(1536)` `embedding` (OpenAI `text-embedding-3-small` by default). The selection node picks the *base* variant whose chunks collectively sit closest to the target job, so the Generator starts from the most relevant raw material instead of editing a generic resume.
 
 We embed the job's signal (title + `description` + `requirements`) once, then score each variant by the mean cosine similarity of its top-k chunks (HNSW index `idx_resume_chunk_embed`, `vector_cosine_ops`). Cosine distance is `<=>` in pgvector, so similarity is `1 - (embedding <=> query)`.
 

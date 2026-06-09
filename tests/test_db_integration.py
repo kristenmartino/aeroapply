@@ -45,9 +45,11 @@ def test_ingest_rank_promote_drop_roundtrip():
     from aeroapply.config import load_profile
     from aeroapply.connectors.base import NormalizedPosting
     from aeroapply.db import repo
+    from aeroapply.sourcing.ranking import RankingPersona
     from aeroapply.sourcing.scheduler import rank_icebox
 
     profile = load_profile(EXAMPLE)
+    persona = RankingPersona.from_profile(profile)
     ai = NormalizedPosting(source_key="greenhouse", external_id="zz1", company="ZZTestCo",
                            title="ZZTEST AI Product Manager", remote_mode="remote", location="Remote")
     ba = NormalizedPosting(source_key="greenhouse", external_id="zz2", company="ZZTestCo",
@@ -68,11 +70,11 @@ def test_ingest_rank_promote_drop_roundtrip():
         ai_id, ba_id = by_title[ai.title], by_title[ba.title]
         assert all(job["company"] == "ZZTestCo" for _, job, _ in icebox)  # display field for Kanban-lite
 
-        scores = {aid: sj.execution_priority for aid, sj in rank_icebox(conn, user_id, profile.ranking_weights)}
+        scores = {aid: sj.execution_priority for aid, sj in rank_icebox(conn, user_id, profile.ranking_weights, persona)}
         assert scores[ai_id] > scores[ba_id]   # AI PM (title 1.0) outranks BA (0.6)
 
         repo.promote(conn, ba_id)               # manual_override -> +100 trump
-        scores2 = {aid: sj.execution_priority for aid, sj in rank_icebox(conn, user_id, profile.ranking_weights)}
+        scores2 = {aid: sj.execution_priority for aid, sj in rank_icebox(conn, user_id, profile.ranking_weights, persona)}
         assert scores2[ba_id] > scores2[ai_id]
 
         repo.drop(conn, ai_id)                  # status='user_rejected' -> leaves the Icebox
@@ -87,9 +89,11 @@ def test_snapshot_ranking_debug_persists_components():
     from aeroapply.config import load_profile
     from aeroapply.connectors.base import NormalizedPosting
     from aeroapply.db import repo
+    from aeroapply.sourcing.ranking import RankingPersona
     from aeroapply.sourcing.scheduler import snapshot_ranking_debug
 
     profile = load_profile(EXAMPLE)
+    persona = RankingPersona.from_profile(profile)
     ai = NormalizedPosting(source_key="greenhouse", external_id="zz3", company="ZZTestCo",
                            title="ZZTEST AI Product Manager", remote_mode="remote", location="Remote")
     ba = NormalizedPosting(source_key="greenhouse", external_id="zz4", company="ZZTestCo",
@@ -100,7 +104,7 @@ def test_snapshot_ranking_debug_persists_components():
         user_id = repo.ensure_operator(conn, profile)
         repo.upsert_icebox(conn, user_id, [ai, ba])
 
-        ranked = snapshot_ranking_debug(conn, user_id, profile.ranking_weights)
+        ranked = snapshot_ranking_debug(conn, user_id, profile.ranking_weights, persona)
         # No commit: the same connection reads its own uncommitted writes, so the
         # finally: conn.rollback() cleans up all inserted rows (DB-test isolation).
 
@@ -125,9 +129,11 @@ def test_curation_events_carry_label_and_ranking_context():
     from aeroapply.config import load_profile
     from aeroapply.connectors.base import NormalizedPosting
     from aeroapply.db import repo
+    from aeroapply.sourcing.ranking import RankingPersona
     from aeroapply.sourcing.scheduler import snapshot_ranking_debug
 
     profile = load_profile(EXAMPLE)
+    persona = RankingPersona.from_profile(profile)
     ai = NormalizedPosting(source_key="greenhouse", external_id="zz5", company="ZZTestCo",
                            title="ZZTEST AI Product Manager", remote_mode="remote", location="Remote")
     ba = NormalizedPosting(source_key="greenhouse", external_id="zz6", company="ZZTestCo",
@@ -137,7 +143,7 @@ def test_curation_events_carry_label_and_ranking_context():
     try:
         user_id = repo.ensure_operator(conn, profile)
         repo.upsert_icebox(conn, user_id, [ai, ba])
-        snapshot_ranking_debug(conn, user_id, profile.ranking_weights)
+        snapshot_ranking_debug(conn, user_id, profile.ranking_weights, persona)
         by_title = {job["title"]: aid for aid, job, _ in repo.fetch_icebox(conn, user_id)}
 
         repo.promote(conn, by_title[ai.title])
@@ -205,9 +211,11 @@ def test_kanban_autosnapshot_makes_curation_paired():
     from aeroapply.config import load_profile
     from aeroapply.connectors.base import NormalizedPosting
     from aeroapply.db import repo
+    from aeroapply.sourcing.ranking import RankingPersona
     from aeroapply.ui.board import build_board, snapshot_row
 
     profile = load_profile(EXAMPLE)
+    persona = RankingPersona.from_profile(profile)
     job = NormalizedPosting(source_key="greenhouse", external_id="zz8", company="ZZTestCo",
                             title="ZZTEST AI Product Manager", remote_mode="remote", location="Remote")
 
@@ -216,7 +224,7 @@ def test_kanban_autosnapshot_makes_curation_paired():
         user_id = repo.ensure_operator(conn, profile)
         repo.upsert_icebox(conn, user_id, [job])
 
-        rows = build_board(conn, user_id, profile.ranking_weights)
+        rows = build_board(conn, user_id, profile.ranking_weights, persona)
         row = rows[0]
         snapshot_row(conn, row, profile.ranking_weights)  # what the Kanban does pre-Promote
         repo.promote(conn, row.application_id)

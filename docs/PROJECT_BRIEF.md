@@ -2,7 +2,7 @@
 
 > **This document is the single source of truth.** Every other doc, the schema, the
 > backlog, and the code must agree with it. If something here conflicts with another
-> doc, this file wins. Last updated: 2026-05-31.
+> doc, this file wins. Last updated: 2026-06-09 (ADR-008 apply-path re-scope).
 
 ---
 
@@ -10,18 +10,18 @@
 
 - **Name:** AeroApply
 - **Tagline:** *Your autonomous job-application co-pilot — sources, tailors, applies, and tracks, with you in the loop only when it matters.*
-- **One-liner:** A persistent, always-on multi-agent daemon that sources relevant roles 24/7, tailors a chosen resume variant for each one (with ATS-keyword optimization via a writer↔critic loop), writes cover letters, answers screening questions from your history, applies through the right channel (API or browser), and tracks the full lifecycle through email — pausing for you only on genuine product/judgment decisions.
+- **One-liner:** A persistent, always-on multi-agent daemon that sources relevant roles 24/7, tailors a chosen resume variant for each one (with ATS-keyword optimization via a writer↔critic loop), writes cover letters, answers screening questions from your history, files the application through the portal's hosted form with your approval (Playwright; see ADR-008), and tracks the full lifecycle through email — pausing for you only on genuine product/judgment decisions.
 - **Repo slug:** `aeroapply` · **Python package:** `aeroapply` · **Visibility:** public (public-safe scaffold; no real operator data committed).
 
 ## 2. Operator persona & configuration
 
 AeroApply is a **single-operator personal tool** (multi-tenant is explicitly out of scope for v1, though the schema is tenant-ready).
 
-- **Primary operator:** a Senior Business Analyst / Project Manager **pivoting into an AI Product Manager** track. Based in **Jupiter, FL** (commute anchor configured in `config/profile.yaml`), open to **remote** or **South-Florida hybrid** (Jupiter / West Palm corridor).
-- **Target titles (priority order):** AI Product Manager, AI Solutions Architect (core, alignment `1.0`); Senior Business Analyst, Technical Project Manager (adjacent fallback, alignment `0.6`).
-- **Hard salary floor:** evaluate the **max** of a posted band; drop if max `< $115,000`. Unlisted salary passes through to the Icebox.
+- **Operator shape:** a professional pivoting between adjacent role tracks, with a home commute anchor, open to **remote** or **local hybrid** within a configured radius.
+- **Target titles:** a small set of **core** titles (alignment `1.0`) plus **adjacent fallback** titles (alignment `0.6`), configured in `profile.target_roles`.
+- **Hard salary floor:** evaluate the **max** of a posted band against the configured floor; drop only when a stated max falls below it. Unlisted salary passes through to the Icebox.
 
-> **PII boundary:** concrete personal values (name, exact address/coords, salary floor, target titles, scoring weights, credentials, email addresses) live in `config/profile.yaml` and `.env` — **never hard-coded into committed docs or source.** `config/profile.example.yaml` ships illustrative defaults. Docs refer to the persona at the role/region level only.
+> **PII boundary:** concrete personal values (name, exact address/coords, salary floor, target titles, scoring weights, credentials, email addresses) live in `config/profile.yaml` and `.env` — **never hard-coded into committed docs or source.** Committed examples are **fictional**: `config/profile.example.yaml` is the "Alex Example" (Springfield, IL) template, and `config/profiles/` carries invented test personas. Code defaults (bouncer, ranking, the frozen debug view) mirror the fictional example persona only.
 
 ## 3. Problem & goals
 
@@ -30,7 +30,7 @@ Job seekers waste hours per application on repetitive, low-judgment work: re-tai
 **Goals**
 1. Maximize *relevant* applications per week without sacrificing accuracy or the operator's professional reputation.
 2. Never fabricate. Truthful answers on every legal/EEO/visa/clearance field — always.
-3. Secure-by-default autonomy: auto-submit only where it is both safe and high-confidence.
+3. Secure-by-default autonomy: every v1 submission is operator-approved; unattended auto-submit is deferred post-v1 (ADR-008).
 4. Full-lifecycle tracking (sourced → applied → interview/offer/rejection) with zero manual data entry.
 5. Explicit, per-node control over which model + settings does each job.
 
@@ -42,7 +42,7 @@ Job seekers waste hours per application on repetitive, low-judgment work: re-tai
 |---|---|---|
 | Orchestration | **LangGraph** (supervisor + nested subgraphs; cyclic critic loops) | Stateful, durable, per-node model control, interrupt/resume HITL. |
 | Runtime shape | **Persistent always-on daemon**, not a one-shot script | Sourcing daemon + WIP-limited execution graph + email-event service. |
-| Autonomy | **Tiered by confidence/source, secure-by-default** | Review-before-submit is the default; auto-submit is *earned* per strict gates. |
+| Autonomy | **Tiered by confidence/source, secure-by-default** | v1 ceiling is **review-and-approve** (every submission operator-approved); unattended auto-submit is deferred post-v1 — ADR-008. |
 | Backend (dev) | **Local Postgres + pgvector via Docker** | Fastest loop; zero cost; instant checkpoint writes. |
 | Backend (prod) | **Railway** (co-located FastAPI engine + Postgres) | Low checkpoint latency; receives inbound email webhooks 24/7. |
 | Vector store | **pgvector in the same Postgres** | One backend; no separate Pinecone/Redis. |
@@ -77,7 +77,7 @@ flowchart TB
     TLR --> COV["Cover letter (if required)"]
     COV --> AQ["Answer questions (AITL, from qa_history)"]
     AQ --> RTE{{"evaluate_submission_route(state)"}}
-    RTE -->|auto-eligible| SUB["Account/creds + Submit (API or Playwright)"]
+    RTE -->|approved| SUB["Account/creds + Submit (Playwright hosted form)"]
     RTE -->|needs human| PAUSE["pause_and_checkpoint → HITL Inbox"]
     PAUSE -.resume.-> SUB
     SUB --> TRK["Track + persist"]
@@ -106,8 +106,8 @@ Computed in **Python** by `src/aeroapply/sourcing/ranking.py` from `profile.rank
 | Factor | Weight | Rule |
 |---|---|---|
 | Manual promote | trump | `manual_override = TRUE` → `+100.0` |
-| Title alignment | 35% | AI Product Manager/Solutions Architect `1.0`; Business Analyst/Tech PM `0.6`; else `0.3` |
-| Location & flexibility | 25% | Remote `1.0`; Jupiter/West Palm hybrid `0.8`; else `0.0` |
+| Title alignment | 35% | best-matching `profile.target_roles` alignment (core `1.0`, adjacent `0.6`); else baseline `0.3` |
+| Location & flexibility | 25% | Remote `1.0`; configured hybrid-hint locations `0.8`; else `0.0` |
 | Recency | 20% | ≤2 days `1.0`; ≤7 days `0.5`; else `0.1` |
 | Competition (applicants) | 10% | `<50` → `1.0`; `<150` → `0.5`; else `0.0` |
 | Urgency (closing soon) | 10% | closes ≤3 days → `1.0`; else `0.0` |
@@ -115,9 +115,9 @@ Computed in **Python** by `src/aeroapply/sourcing/ranking.py` from `profile.rank
 Weights are operator-tunable in `config/profile.yaml`.
 
 ### 5.3 SourcingBouncer edge filters (drop *before* DB write)
-1. **Geo fence:** Remote → keep; Hybrid/Onsite → keep only within 40 mi of Jupiter (geopy); else drop.
-2. **Seniority/industry:** regex-drop titles with `junior|associate|entry-level|intern|grad|construction|civil|healthcare|clinical|mechanical`.
-3. **Salary floor:** parse band **max**; drop if max > 0 **and** < `$115k`. Unlisted (0) passes.
+1. **Geo fence:** Remote → keep; Hybrid/Onsite → keep only within the configured commute radius of the home anchor (geopy); else drop.
+2. **Seniority/industry:** regex-drop titles matching `drop_title_regex` (seniority junk like `junior|entry-level|intern` plus any operator-chosen industry exclusions).
+3. **Salary floor:** parse band **max**; drop if max > 0 **and** < the configured floor. Unlisted (0) passes.
 4. **Clearance/visa gates:** drop on `active ts/sci|top secret|polygraph|clearance required|no c2c|w2 only|us citizens only` (per operator's actual work authorization).
 5. **Ghost-job:** drop if `posted_at` older than 45 days.
 
@@ -134,12 +134,12 @@ The graph uses a **conditional edge** before submission — *not* a static `inte
 - **Honesty gate:** any unseen/novel question, or any EEO/visa/clearance/self-ID field not matched to `qa_history` with high confidence → escalate.
 - **Default:** anything not clearing **all** gates → `escalate_to_human_review`.
 
-**Autonomy tiers by source:**
-- **Tier A (auto-submit eligible):** clean-API ATS (Greenhouse, Lever, Ashby) — predictable structured payloads.
-- **Tier B (HITL required):** DOM/browser portals (Workday, Taleo, company sites), LinkedIn — fragile + ban-prone.
+**Autonomy tiers by source** (re-based by ADR-008 — tiers describe *hosted-form predictability*, not API availability; the candidate-side apply APIs assumed by the original tiering are employer-keyed and unobtainable):
+- **Tier A (hosted ATS forms — highest assist quality):** Greenhouse, Lever, Ashby — stable structured forms, usually no login. Submission is via Playwright on the hosted form.
+- **Tier B (login/multi-step portals):** Workday, Taleo, company sites, LinkedIn — accounts, OTP walls, fragile wizards, ban-prone.
 - **Tier C (blocked):** anything requiring fabrication, or sources whose ToS prohibit automation outright.
 
-Default operator posture: **review-before-submit**. Auto-submit is opt-in per role/source and only fires when every gate passes.
+**v1 ceiling (ADR-008):** every submission requires explicit operator approval — `autonomy.auto_submit_sources` ships `[]` (block-all). The gates above are retained as the config-driven mechanism for a *future*, post-v1 unattended mode, which only becomes possible if a sanctioned candidate-side channel emerges.
 
 ## 7. Account creation & credential vault
 - On reaching a portal, extract the base domain (e.g., `company.wd5.myworkdayjobs.com`).

@@ -3,8 +3,13 @@
 from aeroapply.config import RankingWeights
 from aeroapply.db import repo
 from aeroapply.sourcing import scheduler
+from aeroapply.sourcing.ranking import RankingPersona
 
 WEIGHTS = RankingWeights(title=0.35, location=0.25, recency=0.20, competition=0.10, urgency=0.10)
+PERSONA = RankingPersona(
+    title_alignments=(("ai product manager", 1.0), ("business analyst", 0.6)),
+    hybrid_hints=("tampa",),
+)
 
 
 def _icebox_rows():
@@ -14,7 +19,7 @@ def _icebox_rows():
         ("app-ai", {"title": "AI Product Manager", "company": "Acme",
                     "location": "Remote", "remote_mode": "remote", **base}, False),
         ("app-ba", {"title": "Business Analyst", "company": "Globex",
-                    "location": "Jupiter, FL", "remote_mode": "onsite", **base}, False),
+                    "location": "Tampa, FL", "remote_mode": "onsite", **base}, False),
     ]
 
 
@@ -26,7 +31,7 @@ def test_snapshot_persists_payload_and_preserves_order(monkeypatch):
         lambda conn, app_id, payload: captured.__setitem__(app_id, payload),
     )
 
-    ranked = scheduler.snapshot_ranking_debug(conn=None, user_id="u1", weights=WEIGHTS)
+    ranked = scheduler.snapshot_ranking_debug(conn=None, user_id="u1", weights=WEIGHTS, persona=PERSONA)
 
     # Ordering is exactly what rank_icebox would return: AI PM (title 1.0) first.
     assert [app_id for app_id, _ in ranked] == ["app-ai", "app-ba"]

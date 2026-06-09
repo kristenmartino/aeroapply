@@ -15,7 +15,7 @@ import psycopg
 
 from aeroapply.config import RankingWeights
 from aeroapply.db import repo
-from aeroapply.sourcing.ranking import rank_jobs
+from aeroapply.sourcing.ranking import RankingPersona, rank_jobs
 from aeroapply.sourcing.scheduler import ranking_debug_payload
 
 
@@ -34,13 +34,13 @@ class BoardRow:
 
 
 def build_board(
-    conn: psycopg.Connection, user_id: str, weights: RankingWeights
+    conn: psycopg.Connection, user_id: str, weights: RankingWeights, persona: RankingPersona
 ) -> list[BoardRow]:
     """Return the Icebox as ranked `BoardRow`s (highest execution_priority first)."""
     rows = repo.fetch_icebox(conn, user_id)
     jobs_by_id = {app_id: (job, mo) for app_id, job, mo in rows}
     board: list[BoardRow] = []
-    for app_id, scored in rank_jobs(rows, weights):
+    for app_id, scored in rank_jobs(rows, weights, persona):
         job, mo = jobs_by_id[app_id]
         board.append(
             BoardRow(

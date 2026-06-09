@@ -21,7 +21,7 @@ CREATE TABLE app_user (
     primary_email VARCHAR(255) NOT NULL,            -- where high-priority items are forwarded
     agent_email   VARCHAR(255),                     -- dedicated <name>.agents@domain address
     headline      VARCHAR(255),
-    home_lat      DOUBLE PRECISION,                 -- commute anchor (Jupiter, FL)
+    home_lat      DOUBLE PRECISION,                 -- commute anchor (operator's home, from profile.yaml)
     home_lon      DOUBLE PRECISION,
     work_auth     VARCHAR(120),                     -- drives the clearance/visa bouncer gate
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -32,11 +32,11 @@ CREATE TABLE search_profile (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id         UUID NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
     name            VARCHAR(255) NOT NULL,
-    locations       TEXT[] DEFAULT '{}',            -- e.g. {'Remote','Jupiter, FL','West Palm Beach, FL'}
+    locations       TEXT[] DEFAULT '{}',            -- e.g. {'Remote','Springfield, IL'} (fictional example)
     distance_miles  INTEGER DEFAULT 40,
     remote_modes    TEXT[] DEFAULT '{remote,hybrid}', -- subset of remote|hybrid|onsite
     languages       TEXT[] DEFAULT '{English}',
-    salary_floor    INTEGER DEFAULT 115000,         -- evaluated against the MAX of a band
+    salary_floor    INTEGER DEFAULT 0,              -- evaluated against the MAX of a band; 0 = no floor
     currency        VARCHAR(8) DEFAULT 'USD',
     include_linkedin BOOLEAN DEFAULT TRUE,          -- "on linkedin / not on linkedin"
     exclude_companies TEXT[] DEFAULT '{}',
@@ -273,17 +273,19 @@ SELECT
     (
       -- Manual promote = absolute trump
       (CASE WHEN a.manual_override THEN 100.0 ELSE 0.0 END)
-      -- Title alignment (35%)
+      -- Title alignment (35%) — FROZEN to the fictional example persona
+      -- (config/profile.example.yaml / ranking.EXAMPLE_PERSONA); the canonical,
+      -- profile-driven scoring is ranking.py. Debug/fallback only.
       + 0.35 * (CASE
-          WHEN j.title ILIKE '%AI Product Manager%'
-            OR j.title ILIKE '%AI Solutions Architect%' THEN 1.0
+          WHEN j.title ILIKE '%Product Manager%'
+            OR j.title ILIKE '%Solutions Architect%' THEN 1.0
           WHEN j.title ILIKE '%Business Analyst%'
-            OR j.title ILIKE '%Technical Project Manager%' THEN 0.6
+            OR j.title ILIKE '%Project Manager%' THEN 0.6
           ELSE 0.3 END)
       -- Location & flexibility (25%)
       + 0.25 * (CASE
           WHEN j.remote_mode = 'remote' THEN 1.0
-          WHEN j.location ILIKE '%Jupiter%' OR j.location ILIKE '%West Palm%' THEN 0.8
+          WHEN j.location ILIKE '%Springfield%' THEN 0.8
           ELSE 0.0 END)
       -- Recency (20%)
       + 0.20 * (CASE

@@ -1,9 +1,9 @@
 # ADR-007: Browser automation (Playwright + optional browser-use) and tiered autonomy
 
-- **Status:** Accepted
+- **Status:** Accepted — **amended in part by ADR-008** (the Tier-A "clean-API auto-submit" class below was based on apply APIs that are employer-keyed and unobtainable candidate-side; tiers are re-based on hosted-form predictability and v1's ceiling is review-and-approve)
 - **Date:** 2026-05-31
 - **Deciders:** Architecture, Security, Product
-- **Related:** `docs/PROJECT_BRIEF.md` §4, §6, §7, §13; ADR-004
+- **Related:** `docs/PROJECT_BRIEF.md` §4, §6, §7, §13; ADR-004; ADR-008
 
 ## Context
 

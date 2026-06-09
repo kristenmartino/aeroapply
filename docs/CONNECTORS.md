@@ -1,6 +1,8 @@
 # Source & Apply Connectors
 
-> **Purpose:** Define how AeroApply ingests jobs (source side) and files applications (apply side) per ATS/portal, the autonomy tier and rate-limit/anti-ban posture of each, and exactly which connectors are auto-submit eligible. Aligns with `docs/PROJECT_BRIEF.md` (canonical), `scripts/bootstrap.sql`, and `config/profile.example.yaml`.
+> **Purpose:** Define how AeroApply ingests jobs (source side) and files applications (apply side) per ATS/portal, and the autonomy tier and rate-limit/anti-ban posture of each. Aligns with `docs/PROJECT_BRIEF.md` (canonical), `docs/adr/ADR-008` (apply path), `scripts/bootstrap.sql`, and `config/profile.example.yaml`.
+>
+> **ADR-008 (2026-06-09):** the candidate-side apply APIs this doc originally assumed for Greenhouse/Lever/Ashby **do not exist** — their application-submission APIs are employer-keyed. Every v1 submission is a Playwright walk of the portal's **hosted application form**, operator-approved. Tiers now describe hosted-form predictability, not API availability.
 
 ---
 
@@ -9,7 +11,7 @@
 A connector wraps a single ATS/portal family (Greenhouse, Lever, Workday, …). Every connector advertises up to **two independent capabilities** — it may implement one or both:
 
 - **Source capability** — discover postings matching a `search_profile`, normalize them into `job` rows, and hand each to the `SourcingBouncer` (`src/aeroapply/sourcing/bouncer.py`). This is the high-volume, cheap/local-model path of the **Sourcing Daemon**.
-- **Apply capability** — given an `application` row whose draft has cleared the submission gate, file the application through the right channel (structured API call or a Playwright DOM walk) and return a submission receipt. This is invoked only inside the **Execution Graph** at the `submit` node.
+- **Apply capability** — given an `application` row whose draft has cleared the submission gate and been operator-approved, file the application through the portal's hosted form (Playwright DOM walk — ADR-008) and return a submission receipt. This is invoked only inside the **Execution Graph** at the `submit` node.
 
 The two halves are deliberately decoupled: we frequently **source** a posting from one place (e.g., LinkedIn surfaces a role) but **apply** through another (the role's underlying Greenhouse board). The `job` table records both — `url` (where we found it) and `portal_url` + `portal_type` (where the application is actually filed). The apply connector is chosen from `portal_type`, never from where the job was scraped.
 
@@ -24,7 +26,7 @@ class SourceConnector(Protocol):
 class ApplyConnector(Protocol):
     key: str
     autonomy_tier: Literal["A", "B", "C"]      # mirrors source.autonomy_tier
-    auto_submit_eligible: bool                  # True only for Tier A
+    auto_submit_eligible: bool                  # False for every v1 connector (ADR-008)
     async def submit(self, ctx: ApplicationContext) -> SubmissionReceipt: ...
 ```
 
@@ -46,42 +48,42 @@ Code (`src/aeroapply/connectors/*`) declares defaults; the DB row can override `
 
 ## 2. Capability matrix
 
-| Connector | `kind` | Tier | Source | Apply | Auto-submit | Notes |
+| Connector | `kind` | Tier | Source | Apply (all Playwright hosted-form — ADR-008) | Auto-submit (v1) | Notes |
 |---|---|---|---|---|---|---|
-| **Greenhouse** | api | **A** | yes (job board API) | yes (Job Board / application API) | **yes** | Public board endpoints; structured question schema; clean POST payload. |
-| **Lever** | api | **A** | yes (postings API) | yes (apply/parse API) | **yes** | `postings/{site}` JSON; predictable field IDs. |
-| **Ashby** | api | **A** | yes (job-posting API) | yes (application API) | **yes** | Modern GraphQL/REST; typed custom fields. |
+| **Greenhouse** | api (source) | **A** | yes (public job board API, read-only) | hosted form (`boards.greenhouse.io`) | no | Apply API is **employer-keyed** — unusable candidate-side. Hosted form is stable, structured, no login. |
+| **Lever** | api (source) | **A** | yes (public postings API, read-only) | hosted form (`jobs.lever.co`) | no | Apply POST requires a key only a Lever Super Admin can generate. Hosted form predictable, no login. |
+| **Ashby** | api (source) | **A** | yes (public job-posting API, read-only) | hosted form (`jobs.ashbyhq.com`) | no | Application API is org-keyed. Hosted form typed/structured. |
 | **Workday** | browser | **B** | partial (per-tenant DOM/CxS) | yes (Playwright) | no | Per-tenant subdomains (`*.myworkdayjobs.com`), heavy multi-step forms, account required → always HITL. |
 | **Taleo** | browser | **B** | partial (DOM) | yes (Playwright) | no | Legacy Oracle flows, brittle iframes, frequent account walls → always HITL. |
 | **Company sites (custom)** | browser | **B** | yes (DOM scrape) | yes (Playwright) | no | Bespoke markup; resilient DOM via optional `browser-use`/Stagehand → HITL. |
 | **LinkedIn** | browser | **B** (ToS-restricted) | yes (gated by `include_linkedin`) | Easy Apply via Playwright | no | ToS-restricted + ban-prone; conservative pacing; human-gated. Disable via `include_linkedin=false`. |
-| **Indeed** | browser | **B** | yes (DOM/aggregator) | redirect-only (defer to underlying ATS) | no (as Indeed) | Aggregator: prefer to **resolve to the real ATS** and apply there (often Tier A). Indeed-hosted apply stays HITL. |
+| **Indeed** | browser | **B** | yes (DOM/aggregator) | redirect-only (defer to underlying ATS) | no | Aggregator: prefer to **resolve to the real ATS** and apply there (often Tier A). Indeed-hosted apply stays HITL. |
 
-Tier mapping is canonical (Brief §6): **Tier A** = clean-API ATS (Greenhouse, Lever, Ashby); **Tier B** = DOM/browser portals + LinkedIn; **Tier C** = anything requiring fabrication or whose ToS prohibits automation outright. Auto-submit is **Tier A only** — and only when every gate in §6 passes. `config/profile.example.yaml` encodes this directly:
+Tier mapping (Brief §6, re-based by ADR-008): **Tier A** = hosted ATS forms (Greenhouse, Lever, Ashby) — stable structured markup, usually no login, highest assist quality; **Tier B** = login/multi-step/aggregator portals + LinkedIn; **Tier C** = anything requiring fabrication or whose ToS prohibits automation outright. In v1 **nothing is auto-submit eligible** — every submission is operator-approved. `config/profile.example.yaml` encodes this directly:
 
 ```yaml
 autonomy:
   default_mode: "review"
-  auto_submit_sources: ["greenhouse", "lever", "ashby"]          # Tier A only
+  auto_submit_sources: []     # v1 ships review-and-approve; block-all (ADR-008)
   always_human_sources: ["workday", "taleo", "linkedin", "custom"] # Tier B
   min_ats_score: 0.90
   min_agent_confidence: 0.95
 ```
 
-## 3. API vs DOM — the tradeoff
+## 3. Hosted forms vs login portals — the tradeoff
 
 ```mermaid
 flowchart LR
-  J["job.portal_type"] --> Q{api or browser?}
-  Q -->|api| A["Tier A apply\nstructured POST\nidempotent · fast · stable\nauto-submit ELIGIBLE"]
-  Q -->|browser| B["Tier B apply\nPlaywright DOM walk\nfragile · slow · ban-prone\nALWAYS human-gated"]
+  J["job.portal_type"] --> Q{hosted ATS form or login portal?}
+  Q -->|hosted form| A["Tier A apply\nPlaywright on stable hosted form\nno login · structured fields\nhighest assist quality"]
+  Q -->|login portal| B["Tier B apply\nPlaywright DOM walk\naccounts · OTP walls · ban-prone"]
   A --> G["evaluate_submission_route(state)"]
   B --> G
-  G -->|all gates pass + Tier A| AUTO["auto-submit"]
-  G -->|else| HITL["escalate_to_human_review"]
+  G -->|v1: always| HITL["escalate_to_human_review\n(operator approves in Inbox)"]
+  G -.->|post-v1, ADR-008| AUTO["auto-submit (deferred)"]
 ```
 
-**API connectors (Tier A)** win on every axis that matters for unattended submission: payloads are structured JSON, field IDs are stable across postings, failures surface as HTTP status codes (retryable, idempotent), and there is no anti-bot surface to trip. A Greenhouse submit is a single typed POST whose shape we can validate before sending. This predictability is precisely *why* Tier A is the only auto-submit class.
+**Why Tier A is still a meaningful class (ADR-008):** there is no candidate-side apply API anywhere — Greenhouse/Lever/Ashby application APIs are employer-keyed — so every submission is a browser walk. But hosted ATS forms are the *predictable* end of that spectrum: stable selectors shared across thousands of company boards, structured question schemas, usually no login, no account wall, and far less anti-bot pressure. One Greenhouse form-filler covers every Greenhouse-hosted board. That predictability is why Tier A is the cheapest to maintain and the best-assisted class — and why it would be the first candidate if a sanctioned unattended channel ever opens.
 
 **DOM connectors (Tier B)** are unavoidable for the bulk of large-enterprise hiring (Workday, Taleo) and bespoke career sites, but they are fragile by nature: selectors drift, multi-step wizards carry hidden state, account/OTP walls interrupt mid-flow, and these portals actively fingerprint automation. Per Brief §13, AeroApply does **not** defeat CAPTCHAs or evade anti-bot systems — if a portal blocks us, we escalate rather than fight. DOM flows also frequently require account creation, which is **Tier B by definition** (Brief §7) and the single highest-risk action for bans. Hence every browser-`kind` connector is human-gated regardless of draft quality.
 
@@ -106,7 +108,7 @@ The aggregator case (Indeed/LinkedIn) gets a special rule: **always try to resol
 
 Anti-ban posture by tier:
 
-- **Tier A (API):** authenticate with per-board tokens where required; respect documented quotas; exponential backoff on `429`/`5xx`; small jitter so concurrent submits don't burst. No browser, no fingerprint surface. These caps are courtesy, not camouflage.
+- **Tier A (sourcing reads are API; applies are hosted-form):** the public board/postings JSON endpoints need no auth — respect documented quotas, exponential backoff on `429`/`5xx`, small jitter so concurrent reads don't burst. These caps are courtesy, not camouflage. Hosted-form *submissions* are operator-approved one-at-a-time in v1, so pacing is inherently human.
 - **Tier B (DOM):** one persistent Playwright browser context **per company domain**, reusing stored cookies so we are not a fresh fingerprint each visit. Human-like pacing (`min_gap_s`, randomized typing, scroll/dwell), conservative daily caps, and **never** parallel sessions against the same portal. LinkedIn gets the most conservative envelope (`rpm: 3`, `daily_cap: 15`, `min_gap_s: 90`) because Easy Apply automation is explicitly ToS-restricted (Brief §13.4) — and the whole connector is gated behind `search_profile.include_linkedin`, so the operator can turn it off entirely.
 - **Account/OTP interruptions (Tier B):** when a portal demands a verification code, the paused Playwright thread is resumed by the email-event service via `await graph.aupdate_state(config, {"verification_code": code}, as_node="account_node")` (Brief §8). Credentials are stored Fernet-encrypted in `portal_credentials`, keyed by `company_domain`, and reused on subsequent visits — both an anti-ban measure (stable identity) and a UX one (no repeated signups).
 
@@ -127,7 +129,7 @@ flowchart TB
     IND["Indeed (browser)"] --> NORM
     CS["Company sites (browser)"] --> NORM
     NORM["normalize → RawPosting\n(company,title,location,remote_mode,\nsalary_min/max,posted_at,closing_date,\nportal_url,portal_type,fingerprint)"] --> BNC
-    BNC["SourcingBouncer\ngeo fence (40mi) · seniority/industry regex ·\nsalary-floor MAX ≥ $115k · clearance/visa ·\nghost-job (>45d)"]
+    BNC["SourcingBouncer\ngeo fence (40mi) · seniority/industry regex ·\nsalary-floor (band MAX vs configured floor) · clearance/visa ·\nghost-job (>45d)"]
   end
   BNC -->|survivors only| ICE[("job + application\nwip_status='icebox', status='sourced'")]
   BNC -. dropped, never written .-> X["/dev/null"]
@@ -136,8 +138,8 @@ flowchart TB
 
 The connector's job is to populate the fields the Bouncer and ranking view depend on:
 
-- `remote_mode`, `location`, `lat`/`lon` → **geo-fence** gate (Remote keeps; Hybrid/Onsite within 40 mi of Jupiter).
-- `salary_max` → **salary-floor** gate (drop if `> 0` and `< 115000`; unlisted/`0` passes through).
+- `remote_mode`, `location`, `lat`/`lon` → **geo-fence** gate (Remote keeps; Hybrid/Onsite within the configured radius of the home anchor).
+- `salary_max` → **salary-floor** gate (drop if `> 0` and below the configured floor; unlisted/`0` passes through).
 - `title` → **seniority/industry** regex gate (`drop_title_regex` in profile).
 - `description`/`requirements` → **clearance/visa** gate (`legal_blocker_regex`).
 - `posted_at` → **ghost-job** gate (drop if older than 45 days).
@@ -150,13 +152,15 @@ Survivors are written as a `job` row plus an `application` row at `wip_status='i
 Selection happens at the **`submit` node** of the Execution Graph, *after* the draft has been tailored (Generator ⇄ ATS-Critic), the cover letter written, and questions answered from `qa_history`. The conditional edge `evaluate_submission_route(state)` (`src/aeroapply/graph/routing.py`) decides auto vs. human **per application, at runtime** — not via a static `interrupt_before`.
 
 ```python
-# Illustrative — canonical gate logic lives in src/aeroapply/graph/routing.py
+# Illustrative — canonical gate logic lives in src/aeroapply/graph/routing.py.
+# In v1 auto_submit_sources is [] (block-all, ADR-008), so every application takes the
+# escalate branch and waits for operator approval; the gates are the future opt-in mechanism.
 def evaluate_submission_route(state: AppState) -> Literal["auto_submit", "escalate_to_human_review"]:
     src = get_source(state.job.portal_type)        # the source row for this portal_type
 
-    # Source gate: only clean-API ATS (Tier A) may ever auto-submit.
-    if src.kind != "api" or src.autonomy_tier != "A":
-        return "escalate_to_human_review"          # workday, taleo, linkedin, custom, indeed
+    # Source gate: only an allow-listed Tier-A source could ever auto-submit.
+    if src.autonomy_tier != "A" or src.key not in autonomy.auto_submit_sources:
+        return "escalate_to_human_review"          # v1: this is everything
 
     # Quality gate (Brief §6 / profile.yaml).
     if not (state.ats_score >= 0.90 and state.agent_confidence >= 0.95):
@@ -178,7 +182,7 @@ Once the route is `auto_submit` (or a human approves a parked thread in the Inbo
 
 ```python
 connector = APPLY_REGISTRY[state.job.portal_type]   # greenhouse | lever | ashby | workday | taleo | custom | linkedin
-receipt = await connector.submit(ctx)               # Tier A: typed POST; Tier B: Playwright DOM walk
+receipt = await connector.submit(ctx)               # Playwright hosted-form walk for every portal (ADR-008)
 # persist: application.status = 'submitted', submitted_at = now(), append application_event(actor='agent')
 ```
 
@@ -186,8 +190,9 @@ Every decision and dispatch is written to the append-only `application_event` au
 
 ### What is and isn't auto-submit eligible
 
-- **Eligible (Tier A only):** Greenhouse, Lever, Ashby — and *only* when `kind='api'`, `autonomy_tier='A'`, `ats_score ≥ 0.90`, `agent_confidence ≥ 0.95`, `auto_submit = TRUE`, and no unmatched/novel/sensitive field. Default operator posture is still **review-before-submit** (`default_mode: "review"`); auto-submit is opt-in per role/source.
-- **Never auto-submit (Tier B):** Workday, Taleo, company sites, LinkedIn, Indeed-hosted apply, and **any** flow requiring account creation — all route to `escalate_to_human_review`.
+- **v1: nothing.** `auto_submit_sources: []` (block-all) — every application, on every portal, routes to `escalate_to_human_review` and waits for operator approval in the Inbox (ADR-008). The gates exist so this stays a config decision, not a code change.
+- **Post-v1 (deferred):** Tier-A hosted forms (Greenhouse, Lever, Ashby) would be the first candidates — and *only* with `autonomy_tier='A'`, an explicit allowlist entry, `ats_score ≥ 0.90`, `agent_confidence ≥ 0.95`, `auto_submit = TRUE`, and no unmatched/novel/sensitive field. Revisited only if a sanctioned candidate-side channel emerges.
+- **Never auto-submit (Tier B):** Workday, Taleo, company sites, LinkedIn, Indeed-hosted apply, and **any** flow requiring account creation.
 - **Blocked (Tier C):** any connector or field that would require fabrication, or a source whose ToS prohibits automation outright — not dispatched at all.
 
-This keeps the secure-by-default contract intact: the *only* way an application leaves AeroApply unattended is through a structured, predictable, ToS-clean API where the draft provably clears every gate. Everything fragile, ban-prone, or judgment-laden waits for the human.
+This keeps the secure-by-default contract intact: in v1 **no application leaves AeroApply unattended** — the agent drafts everything and fills the form, the operator approves the send. Everything fragile, ban-prone, or judgment-laden waits for the human.

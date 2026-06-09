@@ -2,7 +2,7 @@
 
 > Purpose: the canonical six-sprint (12-week) delivery plan that takes AeroApply from an empty repo to a Railway-deployed, secure-by-default autonomous job-application daemon. Consistent with `ROADMAP.md`, `PROJECT_BRIEF.md`, `scripts/bootstrap.sql`, and the `backlog/` sprint assignments.
 
-Six 2-week sprints. Sprint 1 begins the week of **2026-06-08**; Sprint 6 closes **2026-08-28**. Each sprint ends with a runnable demo against the local Docker Postgres (`infra/docker-compose.yml`) — prod (Railway) only enters in Sprint 6. Definition-of-done is uniform across sprints: code merged behind the **cross-vendor build-time review** CI gate (`PEER_REVIEW.md` — a different vendor reviews than authored), `ruff` + `mypy` clean, `pytest` green, and the sprint's demo reproducible from a fresh `docker compose up`.
+Six 2-week sprints. Sprint 1 begins the week of **2026-06-08**; Sprint 6 closes **2026-08-28**. Each sprint ends with a runnable demo against the local Docker Postgres (`infra/docker-compose.yml`) — prod (Railway) only enters in Sprint 6. Definition-of-done is uniform across sprints: code cross-reviewed before merge per `PEER_REVIEW.md` (a different vendor reviews than authored — performed manually until the CI gate lands under #17, at which point it becomes a blocking check), `ruff` + `mypy` clean, `pytest` green, and the sprint's demo reproducible from a fresh `docker compose up`.
 
 ```mermaid
 gantt
@@ -35,7 +35,7 @@ Dependency spine: **S1 → S2 → S3 → S4 → S5 → S6**. S2 cannot start the
 - Config loader: parse `config/profile.yaml` (operator, `search_profile`, `bouncer`, `ranking_weights`, `scheduler`, `autonomy`) into typed Pydantic models.
 - **Model-router skeleton** (`src/aeroapply/models/router.py`): reads `model_config[node]` → `{provider, model_id, params, fallback}`; registers `claude-opus-4-8` (1M context, fast mode), `claude-sonnet-4-6`, `claude-haiku-4-5`, and a local Ollama provider. No node calls it yet beyond sourcing.
 - **Connectors** (Tier A, API): Greenhouse, Lever, Ashby (`src/aeroapply/connectors/`). Seed `source` rows with `kind='api'`, `autonomy_tier='A'`.
-- **SourcingBouncer** (`src/aeroapply/sourcing/bouncer.py`): the five edge filters — geo fence (40 mi, geopy), seniority/industry regex, salary-floor (band **max** vs `$115k`, unlisted passes), clearance/visa gate, 45-day ghost-job — dropping junk *before* any DB write.
+- **SourcingBouncer** (`src/aeroapply/sourcing/bouncer.py`): the five edge filters — geo fence (40 mi, geopy), seniority/industry regex, salary-floor (band **max** vs the configured floor, unlisted passes), clearance/visa gate, 45-day ghost-job — dropping junk *before* any DB write.
 - **Dedupe/fingerprint**: `fingerprint = sha256(company+title+location)` → `job.fingerprint UNIQUE`; `ON CONFLICT DO NOTHING`.
 - **Icebox writes**: survivors insert a `job` row and an `application` row at `wip_status='icebox'`, `status='sourced'`.
 - **`v_icebox_ranked`**: ship verbatim from `bootstrap.sql` (weighted CASE; `manual_override → +100`).
@@ -64,7 +64,7 @@ for raw in connector.fetch():           # greenhouse | lever | ashby
 **Scope / stories.**
 - **Supervisor + WIP scheduler** (`src/aeroapply/graph/`): every `cycle_minutes` (180), read `v_icebox_ranked`, promote top-`wip_limit` (5) to `wip_status='queued'`, `status='queued'`.
 - **`verify_open`** (graph's *first* node): HTTP-ping `job.portal_url`; on 404 / "no longer accepting" set `status='closed_before_execution'` and pull the next job — no frontier tokens wasted.
-- **`select_resume`**: choose `resume_variant` by `role_focus` vs target title (AI PM base vs Senior BA base).
+- **`select_resume`**: choose `resume_variant` by `role_focus` vs target title (core-track base vs adjacent-track base).
 - **Generator ⇄ ATS-Critic cyclic subgraph**: Generator (`claude-opus-4-8`, fast mode, `temperature≈0.6`) drafts; ATS-Critic (`claude-sonnet-4-6`, `temperature=0`) scores keyword coverage and flags gaps; loop until `ats_score ≥ threshold` or max-iteration cap. See `TAILORING_AND_ATS.md`.
 - **Postgres checkpointer**: `langgraph-checkpoint-postgres` over psycopg3 `AsyncConnectionPool`; `await checkpointer.setup()` auto-creates `checkpoints*`; `thread_id = application.id`.
 - **Resume/QA embeddings + retrieval**: chunk resumes into `resume_chunk` and seed `qa_history`, embed with `text-embedding-3-small` (1536-d — must match the schema vector width), HNSW cosine retrieval feeding the Generator.
@@ -122,17 +122,17 @@ def evaluate_submission_route(state) -> str:
 
 ## Sprint 4 — Apply connectors + credentials (07/20–07/31)
 
-**Goal.** Actually submit — through clean APIs for Tier A, through Playwright for one DOM portal — backed by an encrypted credential vault. This is the first sprint that touches the outside world transactionally.
+**Goal.** Actually submit — via Playwright hosted-form fillers for Tier-A ATS forms and one Tier-B login portal (ADR-008: candidate-side apply APIs don't exist; every submission is a hosted-form walk, operator-approved) — backed by an encrypted credential vault. This is the first sprint that touches the outside world transactionally.
 
 **Scope / stories.**
-- **API submit (Tier A)**: `submit` node posts structured payloads to Greenhouse/Lever/Ashby; on success set `status='submitted'`, `submitted_at=now()`, `wip_status='done'`.
-- **Playwright submit (one DOM portal)**: drive one Tier-B portal end-to-end; this path is **always HITL-gated** (per the Source gate) and ends by parking the thread to await any verification step.
+- **Hosted-form submit (Tier A)**: `submit` node drives the Greenhouse hosted application form first (Lever/Ashby next) — structured fields, no login; on operator-approved success set `status='submitted'`, `submitted_at=now()`, `wip_status='done'`.
+- **Playwright submit (one login portal)**: drive one Tier-B portal end-to-end; this path is **always HITL-gated** (per the Source gate) and ends by parking the thread to await any verification step.
 - **Account creation + Fernet vault** (`src/aeroapply/db/` credentials): on a portal, derive `company_domain`; look up `portal_credentials` → decrypt (Fernet) and log in, or generate a strong password via `secrets`, sign up, and store a new `portal_credentials` row, attaching `credential_id` to the application. Passwords **Fernet-encrypted at rest** (`AEROAPPLY_FERNET_KEY`); never logged, never shown in the UI. Account creation is Tier B by definition (always HITL).
 - Every submit/login/signup writes an `application_event` (`actor='agent'`).
 
 **Dependencies.** S3 (approved drafts, routing gate, Inbox).
-**Demo.** A real submission to a **Tier-A sandbox** (Greenhouse/Lever/Ashby test posting): app transitions `approved → submitting → submitted` with a captured confirmation in `application_event`; separately, the Playwright path logs into a DOM portal using a freshly created, Fernet-encrypted credential and parks for review.
-**Definition-of-done.** Live submission to a Tier-A sandbox succeeds; credential round-trips (encrypt → store → decrypt → login) verified with no plaintext leakage; DOM path reaches its HITL pause cleanly.
+**Demo.** A real operator-approved submission through a **Greenhouse-hosted form** (test/consented posting): app transitions `approved → submitting → submitted` with a captured confirmation in `application_event`; separately, the Playwright path logs into a login portal using a freshly created, Fernet-encrypted credential and parks for review.
+**Definition-of-done.** An approved application files end-to-end through a hosted form; credential round-trips (encrypt → store → decrypt → login) verified with no plaintext leakage; the login-portal path reaches its HITL pause cleanly.
 **Epics/components landed.** **Epic: Apply Connectors** (API submit, Playwright submit) · **Epic: Credentials & Automation** (account creation, Fernet vault).
 
 ---
@@ -169,21 +169,21 @@ flowchart LR
 **Goal.** Make it safe to run unattended and ship it to Railway: calibrate autonomy, lock down observability and anti-ban hygiene, and cut over from local Docker to production.
 
 **Scope / stories.**
-- **Autonomy calibration**: validate `min_ats_score=0.90` / `min_agent_confidence=0.95` against real drafts; confirm secure-by-default — only Tier A (`greenhouse`, `lever`, `ashby`) is `auto_submit` eligible; `workday`/`taleo`/`linkedin`/`custom` stay human-gated.
+- **Autonomy calibration**: validate `min_ats_score=0.90` / `min_agent_confidence=0.95` against real drafts; confirm secure-by-default — `auto_submit_sources` stays `[]` in v1 (ADR-008); gate telemetry builds the evidence base for any post-v1 Tier-A opt-in.
 - **Audit/observability**: ensure every agent/human/system action lands in `application_event`; add `run`-level tracing and operational dashboards/log views.
 - **Rate-limiting / anti-ban**: enforce per-`source.rate_limit` pacing; conservative LinkedIn/DOM cadence; **no CAPTCHA defeat, no anti-bot evasion** — escalate when blocked.
 - **Railway deploy**: co-located FastAPI engine + Postgres + pgvector on Railway (the prod target — **not** Supabase); inbound email webhook reachable 24/7; Alembic migration applied to prod.
 - **Secrets/KMS**: production Fernet key from a KMS-backed source (not the dev env var); secrets in the platform secret manager, never committed; verify inbound-webhook signatures in prod.
 
 **Dependencies.** S1–S5 (entire daemon: sourcing, graph, UI, apply, email).
-**Demo.** AeroApply running on Railway: sourcing daemon filling the Icebox, the execution graph drafting and pausing for review by default, with **opt-in Tier-A auto-submit** firing only when every gate passes; an end-to-end lifecycle email updates a live application.
-**Definition-of-done.** Running on Railway, **review-default with opt-in Tier-A auto-submit**; prod secrets KMS-backed; audit log complete; anti-ban pacing active; no plaintext credentials anywhere.
+**Demo.** AeroApply running on Railway: sourcing daemon filling the Icebox, the execution graph drafting and pausing for operator approval on every submission (ADR-008); an end-to-end lifecycle email updates a live application.
+**Definition-of-done.** Running on Railway, **review-and-approve on every submission**; prod secrets KMS-backed; audit log complete; anti-ban pacing active; no plaintext credentials anywhere.
 **Epics/components landed.** **Epic: Security & Compliance** (autonomy calibration, audit/observability, anti-ban) · **Epic: Deploy** (Railway, secrets/KMS).
 
 ---
 
 ### Cross-sprint definition-of-done (applies to every sprint)
-1. Merged behind the cross-vendor build-time review CI gate (a different vendor reviews than authored — `PEER_REVIEW.md`).
+1. Cross-vendor review before merge (a different vendor reviews than authored — `PEER_REVIEW.md`). Manual until the CI gate lands (#17); binding as a CI check thereafter.
 2. `ruff` + `mypy` clean; `pytest` green.
 3. Demo reproducible from a fresh `docker compose up` (S1–S5) or a fresh Railway deploy (S6).
 4. No real resumes, credentials, or PII committed; concrete values stay in `config/profile.yaml` / `.env`.
