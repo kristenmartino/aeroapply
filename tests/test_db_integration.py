@@ -241,3 +241,124 @@ def test_kanban_autosnapshot_makes_curation_paired():
     finally:
         conn.rollback()
         conn.close()
+
+
+# --- M2: WIP-scheduler promotion + checkpointed execution graph ---------------------
+def test_promote_top_n_respects_wip_limit_and_audits():
+    from aeroapply.config import load_profile
+    from aeroapply.connectors.base import NormalizedPosting
+    from aeroapply.db import repo
+    from aeroapply.sourcing.ranking import RankingPersona
+    from aeroapply.sourcing.scheduler import promote_top_n
+
+    profile = load_profile(EXAMPLE)
+    persona = RankingPersona.from_profile(profile)
+    postings = [
+        NormalizedPosting(source_key="greenhouse", external_id=f"zzq{i}", company="ZZQueueCo",
+                          title=title, remote_mode="remote", location="Remote")
+        for i, title in enumerate([
+            "ZZTEST Product Manager",          # core 1.0 -> should win slot 1
+            "ZZTEST Business Analyst",         # adjacent 0.6 -> slot 2
+            "ZZTEST Operations Coordinator",   # baseline 0.3 -> stays in the Icebox
+        ])
+    ]
+
+    conn = repo.connect(os.environ["DATABASE_URL"])
+    try:
+        user_id = repo.ensure_operator(conn, profile)
+        repo.upsert_icebox(conn, user_id, postings)
+
+        promoted = promote_top_n(conn, user_id, profile.ranking_weights, persona, wip_limit=2)
+        assert len(promoted) == 2
+
+        rows = conn.execute(
+            """SELECT a.id, j.title, a.wip_status, a.status, a.thread_id, a.ranking_debug
+               FROM application a JOIN job j ON j.id = a.job_id
+               WHERE j.company = 'ZZQueueCo'""",
+        ).fetchall()
+        by_title = {r[1]: r for r in rows}
+        pm, ba, ops = (by_title[f"ZZTEST {t}"]
+                       for t in ("Product Manager", "Business Analyst", "Operations Coordinator"))
+        # top-2 by rank queued, with thread_id = application id and a ranking snapshot
+        for row in (pm, ba):
+            assert (row[2], row[3]) == ("queued", "queued")
+            assert row[4] == str(row[0])
+            assert row[5] and "execution_priority" in row[5]
+        assert (ops[2], ops[3]) == ("icebox", "sourced")
+        assert str(pm[0]) == promoted[0]  # best-ranked got the first slot
+
+        # audit: one actor='system' queued event per promotion
+        n_events = conn.execute(
+            """SELECT count(*) FROM application_event
+               WHERE event_type = %s AND actor = 'system'
+                 AND application_id::text = ANY(%s)""",
+            (repo.EVENT_QUEUED, promoted),
+        ).fetchone()[0]
+        assert n_events == 2
+
+        # a second cycle has zero headroom -> promotes nothing (never exceeds the limit)
+        assert promote_top_n(conn, user_id, profile.ranking_weights, persona, wip_limit=2) == []
+
+        # freeing a slot (closed posting) restores exactly one slot of headroom
+        repo.mark_closed_before_execution(conn, promoted[0])
+        again = promote_top_n(conn, user_id, profile.ranking_weights, persona, wip_limit=2)
+        assert len(again) == 1 and str(ops[0]) == again[0]
+    finally:
+        conn.rollback()
+        conn.close()
+
+
+def test_execution_graph_checkpoint_resume_across_processes():
+    """Kill/resume durability (#30): interrupt before the critic, then resume on a FRESH
+    graph instance (new fakes — simulating a restarted worker). The generator must not
+    run again; the run completes from the checkpoint."""
+    import uuid
+
+    import httpx
+
+    from aeroapply.graph.checkpoint import postgres_checkpointer
+    from aeroapply.graph.execution import build_execution_graph, initial_state
+    from aeroapply.graph.state import OUTCOME_TAILORED
+
+    class FakeModel:
+        def __init__(self, replies):
+            self.replies = list(replies)
+            self.prompts = []
+
+        def invoke(self, prompt):
+            self.prompts.append(prompt)
+            return type("Msg", (), {"content": self.replies.pop(0)})()
+
+    variants = [{"id": "v1", "profile_name": "Core track - base", "role_focus": "Product Manager",
+                 "raw_text": "BASE", "is_default": True}]
+    app_row = {
+        "application_id": f"zztest-{uuid.uuid4()}", "job_title": "Product Manager",
+        "company": "ZZCkptCo", "job_description": "keywords", "job_location": "Remote",
+        "portal_url": "https://boards.example.com/jobs/9", "portal_type": "greenhouse",
+    }
+    ok = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, text="open")))
+    config = {"configurable": {"thread_id": app_row["application_id"]}}
+
+    with postgres_checkpointer(os.environ["DATABASE_URL"]) as saver:
+        # "process 1": runs verify -> select -> generate, then halts before the critic
+        gen1, crit1 = FakeModel(["draft v1"]), FakeModel([])
+        g1 = build_execution_graph(
+            variants, model_factory=lambda n: gen1 if n == "tailor.generator" else crit1,
+            http_client=ok, checkpointer=saver, interrupt_before=["critic"],
+        )
+        partial = g1.invoke(initial_state(app_row), config=config)
+        assert partial["draft_resume_text"] == "draft v1" and crit1.prompts == []
+
+        # "process 2": brand-new graph + fakes, same thread -> resumes FROM the checkpoint
+        gen2 = FakeModel([])  # would raise if the generator re-ran
+        crit2 = FakeModel(['{"ats_score": 0.95, "gaps": []}'])
+        g2 = build_execution_graph(
+            variants, model_factory=lambda n: gen2 if n == "tailor.generator" else crit2,
+            http_client=ok, checkpointer=saver,
+        )
+        final = g2.invoke(None, config=config)
+
+    assert final["outcome"] == OUTCOME_TAILORED
+    assert final["ats_score"] == 0.95
+    assert final["draft_resume_text"] == "draft v1"  # carried across the "restart"
+    assert gen2.prompts == [] and len(crit2.prompts) == 1  # no re-spent generator tokens

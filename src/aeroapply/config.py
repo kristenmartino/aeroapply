@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     scheduler_cycle_minutes: int = 180
     min_ats_score: float = 0.90
     min_agent_confidence: float = 0.95
+    max_tailor_iterations: int = 4  # Generator<->Critic cap — the per-app cost circuit-breaker
 
     profile_path: str = "config/profile.yaml"
 

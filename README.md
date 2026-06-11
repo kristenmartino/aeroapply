@@ -46,8 +46,11 @@ uv run ruff check . && uv run mypy src
 uv run aeroapply source --board <greenhouse_token>   # fetch → bouncer → icebox (read-only)
 uv run aeroapply rank                                # Python-ranked Icebox (rank_jobs, not the view)
 uv run aeroapply ui                                  # Streamlit Kanban-lite: ranked Icebox + Promote/Drop
-# (scaffolds — wired up across later sprints)
-uv run aeroapply schedule             # WIP scheduler → execution graph
+
+# 4. Execution graph (M2): WIP-limited promotion, then checkpointed tailoring
+uv run aeroapply schedule             # one scheduler cycle: top-N icebox → queued (WIP-limited)
+uv run aeroapply work                 # verify_open → select_resume → Generator⇄ATS-Critic (needs model keys)
+# (scaffold — wired up in a later sprint)
 uv run uvicorn services.email_webhook.app:app   # inbound-email webhook (prod: Railway)
 ```
 
