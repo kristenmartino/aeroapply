@@ -45,7 +45,7 @@ JOB DESCRIPTION:
 BASE RESUME:
 {resume_text}
 
-{gaps_section}
+{context_section}{gaps_section}
 Rewrite the resume to maximize legitimate ATS keyword coverage for this posting.
 Return ONLY the full tailored resume text, no commentary."""
 
@@ -100,11 +100,19 @@ def make_generate(model_factory: ModelFactory) -> NodeFn:
             if gaps
             else ""
         )
+        context = state.get("retrieved_context") or []
+        context_section = (
+            "MOST-RELEVANT EXPERIENCE (retrieved from the base resume — lead with this):\n- "
+            + "\n- ".join(context) + "\n\n"
+            if context
+            else ""
+        )
         prompt = GENERATOR_PROMPT.format(
             job_title=state.get("job_title", ""),
             company=state.get("company", ""),
             job_description=state.get("job_description", ""),
             resume_text=state.get("resume_text", ""),
+            context_section=context_section,
             gaps_section=gaps_section,
         )
         draft = _content(model_factory("tailor.generator").invoke(prompt))

@@ -33,6 +33,7 @@ from aeroapply.graph.state import (
     OUTCOME_TAILORED,
     ExecutionState,
 )
+from aeroapply.nodes.retrieve import Retriever, make_retrieve
 from aeroapply.nodes.select_resume import Variant, make_select_resume
 from aeroapply.nodes.tailor import (
     DEFAULT_ATS_THRESHOLD,
@@ -65,15 +66,21 @@ def build_execution_graph(
     *,
     model_factory: ModelFactory | None = None,
     http_client: httpx.Client | None = None,
+    retriever: Retriever | None = None,
     checkpointer: Any = None,
     interrupt_before: list[str] | None = None,
 ) -> Any:
-    """Compile the M2 execution graph. Every dependency is injectable for tests."""
+    """Compile the M2 execution graph. Every dependency is injectable for tests.
+
+    `retriever` grounds the Generator on the chosen variant's most-relevant chunks (#34);
+    None makes the `retrieve` node a pass-through (ungrounded fallback).
+    """
     models = model_factory or _default_model_factory()
 
     g = StateGraph(ExecutionState)
     g.add_node("verify_open", make_verify_open(http_client))
     g.add_node("select_resume", make_select_resume(variants))
+    g.add_node("retrieve", make_retrieve(retriever))
     g.add_node("generate", make_generate(models))
     g.add_node("critic", make_critic(models))
     g.add_node("finalize", finalize)
@@ -82,7 +89,8 @@ def build_execution_graph(
     g.add_conditional_edges("verify_open", _after_verify,
                             {"closed": END, "open": "select_resume"})
     g.add_conditional_edges("select_resume", _after_select,
-                            {"error": END, "ok": "generate"})
+                            {"error": END, "ok": "retrieve"})
+    g.add_edge("retrieve", "generate")
     g.add_edge("generate", "critic")
     g.add_conditional_edges("critic", critic_route,
                             {"revise": "generate", "accept": "finalize"})
@@ -134,6 +142,21 @@ def persist_outcome(conn: psycopg.Connection, final: ExecutionState) -> str:
     return outcome
 
 
+def make_db_retriever(conn: psycopg.Connection, embedder: Any, *, k: int = 5) -> Retriever:
+    """A `retriever(variant_id, job_text)` over `resume_chunk` via pgvector cosine (#34).
+
+    Embeds the job text with the injected embedder and returns the chosen variant's
+    top-k nearest chunk texts. Used by `run_application`; unit tests inject a fake.
+    """
+
+    def retrieve(variant_id: str, job_text: str) -> list[str]:
+        query_vec = embedder.embed([job_text])[0]
+        hits = repo.retrieve_resume_chunks(conn, variant_id, query_vec, k=k)
+        return [text for text, _distance in hits]
+
+    return retrieve
+
+
 def run_application(
     conn: psycopg.Connection,
     app_row: dict[str, Any],
@@ -141,6 +164,7 @@ def run_application(
     *,
     model_factory: ModelFactory | None = None,
     http_client: httpx.Client | None = None,
+    retriever: Retriever | None = None,
     checkpointer: Any = None,
     ats_threshold: float = DEFAULT_ATS_THRESHOLD,
     max_iterations: int = DEFAULT_MAX_ITERATIONS,
@@ -154,6 +178,7 @@ def run_application(
         variants,
         model_factory=model_factory,
         http_client=http_client,
+        retriever=retriever,
         checkpointer=checkpointer,
     )
     config = {"configurable": {"thread_id": app_row["application_id"]}}
@@ -169,5 +194,6 @@ __all__ = [
     "build_execution_graph",
     "initial_state",
     "persist_outcome",
+    "make_db_retriever",
     "run_application",
 ]

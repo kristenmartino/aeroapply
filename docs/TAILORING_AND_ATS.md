@@ -42,6 +42,8 @@ LIMIT  1;
 
 The winning `resume_variant_id` is written to `application.resume_variant_id` and the variant's `structured_json` becomes the Generator's editable scaffold (section-level edits, not a freeform rewrite). If no variant clears a minimum similarity floor, we fall back to `resume_variant.is_default = TRUE` and lower the starting `agent_confidence` — a weak base is itself a signal that this role may need human review. The mean-of-top-k score is also a convenient seed for `application.match_score`.
 
+> **Implementation status (#34).** Landed: the embedding/retrieval layer — `src/aeroapply/embeddings.py` (provider-agnostic `Embedder`, default OpenAI `text-embedding-3-small`, deterministic `HashEmbedder` for offline/tests, startup dimension guard), `chunk_resume`, `repo.index_resume_chunks` / `repo.retrieve_resume_chunks` (pgvector `<=>`), the `aeroapply index` command, and the graph's `retrieve` node that **grounds the Generator** on the chosen variant's top-k chunks. Still deterministic: `select_resume` picks the variant by `role_focus`/title substring (then `is_default`), not yet by the embedding score above — embedding-ranked variant *selection* is the next increment on top of this same retrieval layer.
+
 ---
 
 ## 3. The cyclic Generator ⇄ ATS-Critic subgraph

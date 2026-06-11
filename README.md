@@ -48,8 +48,9 @@ uv run aeroapply rank                                # Python-ranked Icebox (ran
 uv run aeroapply ui                                  # Streamlit Kanban-lite: ranked Icebox + Promote/Drop
 
 # 4. Execution graph (M2): WIP-limited promotion, then checkpointed tailoring
+uv run aeroapply index                # chunk + embed résumé variants → resume_chunk (pgvector)
 uv run aeroapply schedule             # one scheduler cycle: top-N icebox → queued (WIP-limited)
-uv run aeroapply work                 # verify_open → select_resume → Generator⇄ATS-Critic (needs model keys)
+uv run aeroapply work                 # verify_open → select_resume → retrieve → Generator⇄ATS-Critic (needs model keys)
 # (scaffold — wired up in a later sprint)
 uv run uvicorn services.email_webhook.app:app   # inbound-email webhook (prod: Railway)
 ```

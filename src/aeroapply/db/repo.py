@@ -324,6 +324,59 @@ def mark_graph_error(conn: psycopg.Connection, application_id: str, error: str) 
     _event(conn, application_id, EVENT_GRAPH_ERROR, {"error": error}, actor="agent")
 
 
+# --- M2: resume embeddings + pgvector retrieval (#34) ----------------------------
+def _register_vector(conn: psycopg.Connection) -> None:
+    """Enable the pgvector type adapter on this connection (idempotent per call)."""
+    from pgvector.psycopg import register_vector
+
+    register_vector(conn)
+
+
+def index_resume_chunks(
+    conn: psycopg.Connection,
+    resume_id: str,
+    chunks: list[tuple[str | None, str]],
+    embeddings: list[list[float]],
+) -> int:
+    """Replace a resume's `resume_chunk` rows with freshly-embedded chunks (re-index safe).
+
+    Deletes any existing chunks for the resume first, so re-running is idempotent rather
+    than duplicating. `chunks` and `embeddings` are zipped positionally. Caller commits.
+    """
+    if len(chunks) != len(embeddings):
+        raise ValueError(f"chunks ({len(chunks)}) and embeddings ({len(embeddings)}) misaligned")
+    from pgvector import Vector
+
+    _register_vector(conn)
+    conn.execute("DELETE FROM resume_chunk WHERE resume_id = %s", (resume_id,))
+    for (section, text), emb in zip(chunks, embeddings, strict=True):
+        conn.execute(
+            """INSERT INTO resume_chunk (resume_id, section_name, chunk_text, embedding)
+               VALUES (%s, %s, %s, %s)""",
+            (resume_id, section, text, Vector(emb)),
+        )
+    return len(chunks)
+
+
+def retrieve_resume_chunks(
+    conn: psycopg.Connection,
+    resume_id: str,
+    query_embedding: list[float],
+    k: int = 5,
+) -> list[tuple[str, float]]:
+    """Top-k `(chunk_text, cosine_distance)` for a resume, nearest first (pgvector `<=>`)."""
+    from pgvector import Vector
+
+    _register_vector(conn)
+    rows = conn.execute(
+        """SELECT chunk_text, embedding <=> %s AS distance
+           FROM resume_chunk WHERE resume_id = %s
+           ORDER BY distance ASC LIMIT %s""",
+        (Vector(query_embedding), resume_id, k),
+    ).fetchall()
+    return [(r[0], float(r[1])) for r in rows]
+
+
 __all__ = [
     "UpsertCounts", "connect", "ensure_operator", "upsert_icebox",
     "fetch_icebox", "promote", "drop", "set_ranking_debug",
@@ -333,4 +386,5 @@ __all__ = [
     "count_in_flight", "promote_to_queue", "fetch_next_queued",
     "fetch_resume_variants", "mark_closed_before_execution",
     "save_tailoring_result", "mark_graph_error",
+    "index_resume_chunks", "retrieve_resume_chunks",
 ]

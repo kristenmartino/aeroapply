@@ -88,11 +88,39 @@ def _cmd_schedule(args: argparse.Namespace) -> None:
     print(f"promoted={len(promoted)} in_flight={in_flight} wip_limit={profile.scheduler.wip_limit}")
 
 
+def _cmd_index(args: argparse.Namespace) -> None:
+    from aeroapply.config import get_settings
+    from aeroapply.db import repo
+    from aeroapply.embeddings import build_default_embedder, chunk_resume, validate_dim
+
+    settings = get_settings()
+    profile = _resolve_profile(args)
+    embedder = build_default_embedder(settings.embedding_model, settings.embedding_dim)
+    validate_dim(embedder, settings.embedding_dim)
+    with repo.connect(settings.database_url) as conn:
+        user_id = repo.ensure_operator(conn, profile)
+        variants = repo.fetch_resume_variants(conn, user_id)
+        if not variants:
+            print("no resume_variant rows — load a base resume first")
+            return
+        total = 0
+        for v in variants:
+            chunks = chunk_resume(v["raw_text"])
+            if not chunks:
+                continue
+            embeddings = embedder.embed([text for _section, text in chunks])
+            n = repo.index_resume_chunks(conn, v["id"], chunks, embeddings)
+            total += n
+            print(f"indexed {n:3d} chunks  {v['profile_name']}")
+    print(f"done: {total} chunks across {len(variants)} variant(s)")
+
+
 def _cmd_work(args: argparse.Namespace) -> None:
     from aeroapply.config import get_settings
     from aeroapply.db import repo
+    from aeroapply.embeddings import build_default_embedder, validate_dim
     from aeroapply.graph.checkpoint import postgres_checkpointer
-    from aeroapply.graph.execution import run_application
+    from aeroapply.graph.execution import make_db_retriever, run_application
 
     settings = get_settings()
     profile = _resolve_profile(args)
@@ -103,9 +131,15 @@ def _cmd_work(args: argparse.Namespace) -> None:
             print("queue is empty — run `aeroapply schedule` first")
             return
         variants = repo.fetch_resume_variants(conn, user_id)
+        retriever = None
+        if not args.no_retrieval:
+            embedder = build_default_embedder(settings.embedding_model, settings.embedding_dim)
+            validate_dim(embedder, settings.embedding_dim)
+            retriever = make_db_retriever(conn, embedder)
         with postgres_checkpointer(settings.database_url) as saver:
             final = run_application(
                 conn, app_row, variants,
+                retriever=retriever,
                 checkpointer=saver,
                 ats_threshold=settings.min_ats_score,
                 max_iterations=settings.max_tailor_iterations,
@@ -161,10 +195,18 @@ def main() -> None:
     add_profile_arg(p_sched)
     p_sched.set_defaults(func=_cmd_schedule)
 
+    p_index = sub.add_parser(
+        "index", help="chunk + embed the operator's resume variants into resume_chunk (#34)"
+    )
+    add_profile_arg(p_index)
+    p_index.set_defaults(func=_cmd_index)
+
     p_work = sub.add_parser(
         "work",
         help="run the next queued application through the graph (needs model API keys)",
     )
+    p_work.add_argument("--no-retrieval", action="store_true",
+                        help="skip resume-chunk grounding (use the full base resume)")
     add_profile_arg(p_work)
     p_work.set_defaults(func=_cmd_work)
 

@@ -28,6 +28,9 @@ class ExecutionState(TypedDict, total=False):
     resume_profile_name: str | None
     resume_text: str
 
+    # retrieve (grounding context for the Generator)
+    retrieved_context: list[str]
+
     # tailoring loop (Generator <-> ATS-Critic)
     draft_resume_text: str
     ats_score: float
