@@ -55,6 +55,55 @@ def http_ok(body: str = "Apply now!", status: int = 200) -> httpx.Client:
     )
 
 
+def test_retriever_grounds_the_generator_prompt():
+    generator = FakeModel(["draft v1"])
+    critic = FakeModel(['{"ats_score": 0.95, "gaps": []}'])
+    calls: list[tuple[str, str]] = []
+
+    def retriever(variant_id: str, job_text: str) -> list[str]:
+        calls.append((variant_id, job_text))
+        return ["Led a 0-to-1 analytics platform launch", "Owned the pricing roadmap"]
+
+    graph = build_execution_graph(VARIANTS, model_factory=fake_factory(generator, critic),
+                                  http_client=http_ok(), retriever=retriever)
+
+    final = graph.invoke(initial_state(APP_ROW))
+
+    assert final["outcome"] == OUTCOME_TAILORED
+    # retriever was called with the SELECTED variant id and the job text
+    assert calls and calls[0][0] == "v-core"
+    assert "Senior Product Manager" in calls[0][1]
+    # the retrieved chunks are in the generator prompt
+    assert "0-to-1 analytics platform launch" in generator.prompts[0]
+    assert "MOST-RELEVANT EXPERIENCE" in generator.prompts[0]
+
+
+def test_no_retriever_is_a_clean_passthrough():
+    # The default (no retriever) must leave behavior identical to pre-#34.
+    generator = FakeModel(["draft v1"])
+    critic = FakeModel(['{"ats_score": 0.95, "gaps": []}'])
+    graph = build_execution_graph(VARIANTS, model_factory=fake_factory(generator, critic),
+                                  http_client=http_ok())  # retriever=None
+    final = graph.invoke(initial_state(APP_ROW))
+    assert final["outcome"] == OUTCOME_TAILORED
+    assert "MOST-RELEVANT EXPERIENCE" not in generator.prompts[0]
+
+
+def test_retriever_failure_degrades_to_ungrounded():
+    generator = FakeModel(["draft v1"])
+    critic = FakeModel(['{"ats_score": 0.95, "gaps": []}'])
+
+    def boom(variant_id: str, job_text: str) -> list[str]:
+        raise RuntimeError("pgvector down")
+
+    graph = build_execution_graph(VARIANTS, model_factory=fake_factory(generator, critic),
+                                  http_client=http_ok(), retriever=boom)
+    final = graph.invoke(initial_state(APP_ROW))
+    # retrieval failure must not crash the run — it tailors from the base resume
+    assert final["outcome"] == OUTCOME_TAILORED
+    assert "MOST-RELEVANT EXPERIENCE" not in generator.prompts[0]
+
+
 def test_loop_revises_until_threshold():
     generator = FakeModel(["draft v1", "draft v2"])
     critic = FakeModel(

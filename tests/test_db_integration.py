@@ -362,3 +362,113 @@ def test_execution_graph_checkpoint_resume_across_processes():
     assert final["ats_score"] == 0.95
     assert final["draft_resume_text"] == "draft v1"  # carried across the "restart"
     assert gen2.prompts == [] and len(crit2.prompts) == 1  # no re-spent generator tokens
+
+
+# --- M2: resume embeddings + pgvector retrieval (#34) -------------------------------
+def test_index_and_retrieve_resume_chunks_roundtrip():
+    """Store chunks with embeddings, then cosine-retrieve: the chunk matching the query
+    ranks first. Uses the deterministic HashEmbedder so order is reproducible in CI."""
+    from aeroapply.config import load_profile
+    from aeroapply.db import repo
+    from aeroapply.embeddings import HashEmbedder
+
+    profile = load_profile(EXAMPLE)
+    embedder = HashEmbedder(dim=1536)  # matches the vector(1536) schema
+
+    conn = repo.connect(os.environ["DATABASE_URL"])
+    try:
+        user_id = repo.ensure_operator(conn, profile)
+        # a resume_variant to attach chunks to
+        rv = conn.execute(
+            """INSERT INTO resume_variant (user_id, profile_name, role_focus, raw_text)
+               VALUES (%s, 'ZZTEST base', 'Product Manager', 'unused') RETURNING id""",
+            (user_id,),
+        ).fetchone()[0]
+
+        chunks = [
+            ("Skills", "python kubernetes airflow data pipelines"),
+            ("Experience", "retail sales associate cashier customer service"),
+            ("Summary", "product manager roadmap stakeholder analytics"),
+        ]
+        embeddings = embedder.embed([t for _s, t in chunks])
+        n = repo.index_resume_chunks(conn, str(rv), chunks, embeddings)
+        assert n == 3
+
+        # query closest to the first chunk -> it ranks first
+        q = embedder.embed(["python airflow data pipelines"])[0]
+        hits = repo.retrieve_resume_chunks(conn, str(rv), q, k=3)
+        assert len(hits) == 3
+        assert hits[0][0] == "python kubernetes airflow data pipelines"
+        assert hits[0][1] <= hits[1][1] <= hits[2][1]  # distances ascending
+
+        # re-index is idempotent (delete-then-insert), not duplicative
+        repo.index_resume_chunks(conn, str(rv), chunks, embeddings)
+        count = conn.execute(
+            "SELECT count(*) FROM resume_chunk WHERE resume_id = %s", (str(rv),)
+        ).fetchone()[0]
+        assert count == 3
+    finally:
+        conn.rollback()
+        conn.close()
+
+
+def test_work_path_grounds_generator_from_indexed_chunks():
+    """End-to-end driver slice: index a resume, then run_application with a real
+    DB-backed retriever (HashEmbedder) + fake models — the retrieved chunk reaches the
+    generator prompt. Proves make_db_retriever wires retrieve_resume_chunks correctly."""
+    import uuid
+
+    import httpx
+
+    from aeroapply.config import load_profile
+    from aeroapply.db import repo
+    from aeroapply.embeddings import HashEmbedder
+    from aeroapply.graph.execution import make_db_retriever, run_application
+    from aeroapply.graph.state import OUTCOME_TAILORED
+
+    class FakeModel:
+        def __init__(self, replies):
+            self.replies, self.prompts = list(replies), []
+
+        def invoke(self, prompt):
+            self.prompts.append(prompt)
+            return type("M", (), {"content": self.replies.pop(0)})()
+
+    profile = load_profile(EXAMPLE)
+    embedder = HashEmbedder(dim=1536)
+    conn = repo.connect(os.environ["DATABASE_URL"])
+    try:
+        user_id = repo.ensure_operator(conn, profile)
+        rv = conn.execute(
+            """INSERT INTO resume_variant (user_id, profile_name, role_focus, raw_text)
+               VALUES (%s, 'ZZTEST PM base', 'Product Manager', 'base') RETURNING id""",
+            (user_id,),
+        ).fetchone()[0]
+        chunks = [("Experience", "shipped a machine learning roadmap for analytics")]
+        repo.index_resume_chunks(conn, str(rv), chunks, embedder.embed([chunks[0][1]]))
+
+        variants = [{"id": str(rv), "profile_name": "ZZTEST PM base",
+                     "role_focus": "Product Manager", "raw_text": "base", "is_default": True}]
+        app_row = {
+            "application_id": f"zztest-{uuid.uuid4()}", "job_title": "Product Manager",
+            "company": "ZZCo", "job_description": "machine learning analytics roadmap",
+            "job_location": "Remote", "portal_url": None, "portal_type": "greenhouse",
+        }
+        gen = FakeModel(["tailored draft"])
+        crit = FakeModel(['{"ats_score": 0.95, "gaps": []}'])
+        retriever = make_db_retriever(conn, embedder, k=3)
+
+        final = run_application(
+            conn, app_row, variants,
+            model_factory=lambda n: gen if n == "tailor.generator" else crit,
+            http_client=httpx.Client(transport=httpx.MockTransport(
+                lambda r: httpx.Response(200, text="open"))),
+            retriever=retriever,
+        )
+
+        assert final["outcome"] == OUTCOME_TAILORED
+        assert "machine learning roadmap for analytics" in gen.prompts[0]
+        assert "MOST-RELEVANT EXPERIENCE" in gen.prompts[0]
+    finally:
+        conn.rollback()
+        conn.close()
