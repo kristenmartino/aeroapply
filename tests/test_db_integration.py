@@ -413,14 +413,14 @@ def test_index_and_retrieve_resume_chunks_roundtrip():
 
 
 def test_work_path_grounds_generator_from_indexed_chunks():
-    """End-to-end driver slice: index a resume, then run_application with a real
-    DB-backed retriever (HashEmbedder) + fake models — the retrieved chunk reaches the
-    generator prompt. Proves make_db_retriever wires retrieve_resume_chunks correctly."""
-    import uuid
-
+    """End-to-end driver slice: index a resume, queue a real application, then
+    run_application with a real DB-backed retriever (HashEmbedder) + fake models. Proves
+    make_db_retriever wires retrieve_resume_chunks AND that the outcome persists — the
+    retrieved chunk reaches the generator prompt and status flips to 'drafting'."""
     import httpx
 
     from aeroapply.config import load_profile
+    from aeroapply.connectors.base import NormalizedPosting
     from aeroapply.db import repo
     from aeroapply.embeddings import HashEmbedder
     from aeroapply.graph.execution import make_db_retriever, run_application
@@ -447,11 +447,21 @@ def test_work_path_grounds_generator_from_indexed_chunks():
         chunks = [("Experience", "shipped a machine learning roadmap for analytics")]
         repo.index_resume_chunks(conn, str(rv), chunks, embedder.embed([chunks[0][1]]))
 
+        # a REAL job + application row (UUID id), so persist_outcome can UPDATE it
+        posting = NormalizedPosting(
+            source_key="greenhouse", external_id="zzwork1", company="ZZWorkCo",
+            title="ZZTEST Product Manager", remote_mode="remote", location="Remote",
+            description="machine learning analytics roadmap",
+        )
+        repo.upsert_icebox(conn, user_id, [posting])
+        app_id = next(aid for aid, job, _ in repo.fetch_icebox(conn, user_id)
+                      if job["title"] == "ZZTEST Product Manager")
+
         variants = [{"id": str(rv), "profile_name": "ZZTEST PM base",
                      "role_focus": "Product Manager", "raw_text": "base", "is_default": True}]
         app_row = {
-            "application_id": f"zztest-{uuid.uuid4()}", "job_title": "Product Manager",
-            "company": "ZZCo", "job_description": "machine learning analytics roadmap",
+            "application_id": app_id, "job_title": "Product Manager",
+            "company": "ZZWorkCo", "job_description": "machine learning analytics roadmap",
             "job_location": "Remote", "portal_url": None, "portal_type": "greenhouse",
         }
         gen = FakeModel(["tailored draft"])
@@ -469,6 +479,13 @@ def test_work_path_grounds_generator_from_indexed_chunks():
         assert final["outcome"] == OUTCOME_TAILORED
         assert "machine learning roadmap for analytics" in gen.prompts[0]
         assert "MOST-RELEVANT EXPERIENCE" in gen.prompts[0]
+        # outcome persisted: status -> drafting, ats_score + tailored text stored
+        row = conn.execute(
+            "SELECT status, wip_status, ats_score, tailored_resume_text FROM application WHERE id = %s",
+            (app_id,),
+        ).fetchone()
+        assert row[0] == "drafting" and row[1] == "active"
+        assert float(row[2]) == 0.95 and row[3] == "tailored draft"
     finally:
         conn.rollback()
         conn.close()
