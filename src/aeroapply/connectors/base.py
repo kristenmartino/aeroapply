@@ -51,6 +51,7 @@ class NormalizedPosting(BaseModel):
             "description": self.description,
             "salary_text": self.salary_text,
             "remote_mode": self.remote_mode,
+            "location": self.location,  # free-text; geocoded by the bouncer's geo gate (#89)
             "lat": self.lat,
             "lon": self.lon,
             "posted_at": self.posted_at,

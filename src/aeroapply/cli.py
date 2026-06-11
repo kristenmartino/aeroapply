@@ -25,12 +25,14 @@ def _cmd_source(args: argparse.Namespace) -> None:
     from aeroapply.connectors.registry import get_connector
     from aeroapply.db import repo
     from aeroapply.sourcing.bouncer import SourcingBouncer
+    from aeroapply.sourcing.geocoding import build_default_geocoder
     from aeroapply.sourcing.ingest import plan_ingest
 
     settings = get_settings()
     profile = _resolve_profile(args)
     connector = get_connector("greenhouse", board_token=args.board, company=args.company)
-    plan = plan_ingest(connector.fetch(), SourcingBouncer(profile.to_bouncer_config()))
+    bouncer = SourcingBouncer(profile.to_bouncer_config(), geocoder=build_default_geocoder())
+    plan = plan_ingest(connector.fetch(), bouncer)
     with repo.connect(settings.database_url) as conn:
         user_id = repo.ensure_operator(conn, profile)
         counts = repo.upsert_icebox(conn, user_id, plan.survivors)

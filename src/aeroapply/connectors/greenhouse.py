@@ -5,9 +5,11 @@ that powers company career pages). No login, no ToS gray area, no apply path. Th
 is the canonical Tier-A source for the first ingestion wedge.
 
 Caveats / follow-ups:
-- Location is a free-text string with no lat/lon, so non-remote postings cannot be
-  geo-fenced without a geocoder (future work) — the bouncer drops hybrid/onsite
-  postings that lack coordinates. Remote roles flow through.
+- Location is a free-text string with no lat/lon. The bouncer's geo gate geocodes it
+  (sourcing.geocoding, #89): a static centroid table covers common US cities, with an
+  optional Nominatim fallback (set AEROAPPLY_GEOCODER=nominatim). A string neither the
+  table nor the fallback can place drops as "unresolvable location" — distinct from
+  "outside commute radius" — rather than being silently kept or mis-dropped.
 - The public API exposes only `updated_at` (last-edit time), NOT a first-publication
   date. It is mapped to `posted_at`, so the bouncer's 45-day ghost-job filter is
   unreliable for this source: a stale posting with any recent edit reads as fresh.
