@@ -54,4 +54,35 @@ def snapshot_ranking_debug(
     return ranked
 
 
-__all__ = ["rank_icebox", "snapshot_ranking_debug", "ranking_debug_payload"]
+def promote_top_n(
+    conn: psycopg.Connection,
+    user_id: str,
+    weights: RankingWeights,
+    persona: RankingPersona,
+    *,
+    wip_limit: int,
+) -> list[str]:
+    """One WIP-scheduler cycle (#28): promote the top-ranked Icebox rows into the queue.
+
+    Headroom = ``wip_limit - in_flight`` (queued + active), so repeated cycles never
+    exceed the limit — the cost circuit-breaker the brief leans on. Each promotion also
+    snapshots ``ranking_debug`` (the features that earned the slot) so the queue decision
+    is calibratable (#80). Returns the promoted application ids, best-ranked first.
+    The caller owns the transaction and commits.
+    """
+    headroom = wip_limit - repo.count_in_flight(conn, user_id)
+    if headroom <= 0:
+        return []
+    ranked = rank_icebox(conn, user_id, weights, persona)
+    winners = ranked[:headroom]
+    for app_id, scored in winners:
+        repo.set_ranking_debug(
+            conn, app_id,
+            ranking_debug_payload(scored.components, scored.execution_priority, weights),
+        )
+    promoted_ids = [app_id for app_id, _ in winners]
+    repo.promote_to_queue(conn, promoted_ids)
+    return promoted_ids
+
+
+__all__ = ["rank_icebox", "snapshot_ranking_debug", "ranking_debug_payload", "promote_top_n"]

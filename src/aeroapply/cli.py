@@ -67,6 +67,55 @@ def _cmd_rank(args: argparse.Namespace) -> None:
         print(f"persisted ranking_debug for {len(ranked)} icebox rows")
 
 
+def _cmd_schedule(args: argparse.Namespace) -> None:
+    from aeroapply.config import get_settings
+    from aeroapply.db import repo
+    from aeroapply.sourcing.ranking import RankingPersona
+    from aeroapply.sourcing.scheduler import promote_top_n
+
+    settings = get_settings()
+    profile = _resolve_profile(args)
+    persona = RankingPersona.from_profile(profile)
+    with repo.connect(settings.database_url) as conn:
+        user_id = repo.ensure_operator(conn, profile)
+        promoted = promote_top_n(
+            conn, user_id, profile.ranking_weights, persona,
+            wip_limit=profile.scheduler.wip_limit,
+        )
+        in_flight = repo.count_in_flight(conn, user_id)
+    for app_id in promoted:
+        print(f"queued {app_id}")
+    print(f"promoted={len(promoted)} in_flight={in_flight} wip_limit={profile.scheduler.wip_limit}")
+
+
+def _cmd_work(args: argparse.Namespace) -> None:
+    from aeroapply.config import get_settings
+    from aeroapply.db import repo
+    from aeroapply.graph.checkpoint import postgres_checkpointer
+    from aeroapply.graph.execution import run_application
+
+    settings = get_settings()
+    profile = _resolve_profile(args)
+    with repo.connect(settings.database_url) as conn:
+        user_id = repo.ensure_operator(conn, profile)
+        app_row = repo.fetch_next_queued(conn, user_id)
+        if app_row is None:
+            print("queue is empty — run `aeroapply schedule` first")
+            return
+        variants = repo.fetch_resume_variants(conn, user_id)
+        with postgres_checkpointer(settings.database_url) as saver:
+            final = run_application(
+                conn, app_row, variants,
+                checkpointer=saver,
+                ats_threshold=settings.min_ats_score,
+                max_iterations=settings.max_tailor_iterations,
+            )
+    print(
+        f"{app_row['application_id']}  outcome={final.get('outcome')} "
+        f"ats_score={final.get('ats_score')} iterations={final.get('iterations')}"
+    )
+
+
 def _cmd_ui(args: argparse.Namespace) -> None:
     import os
     import subprocess
@@ -106,7 +155,19 @@ def main() -> None:
     add_profile_arg(p_rank)
     p_rank.set_defaults(func=_cmd_rank)
 
-    sub.add_parser("schedule", help="run the WIP scheduler once (TODO)")
+    p_sched = sub.add_parser(
+        "schedule", help="one WIP-scheduler cycle: promote top-N Icebox jobs to the queue"
+    )
+    add_profile_arg(p_sched)
+    p_sched.set_defaults(func=_cmd_schedule)
+
+    p_work = sub.add_parser(
+        "work",
+        help="run the next queued application through the graph (needs model API keys)",
+    )
+    add_profile_arg(p_work)
+    p_work.set_defaults(func=_cmd_work)
+
     p_ui = sub.add_parser("ui", help="launch the Streamlit Kanban-lite over the Icebox")
     add_profile_arg(p_ui)
     p_ui.set_defaults(func=_cmd_ui)

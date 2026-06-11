@@ -153,11 +153,12 @@ def _event(
     application_id: str,
     event_type: str,
     payload: dict[str, Any] | None = None,
+    actor: str = "human",
 ) -> None:
     conn.execute(
         """INSERT INTO application_event (application_id, event_type, actor, payload)
-           VALUES (%s, %s, 'human', %s)""",
-        (application_id, event_type, Jsonb(payload if payload is not None else {})),
+           VALUES (%s, %s, %s, %s)""",
+        (application_id, event_type, actor, Jsonb(payload if payload is not None else {})),
     )
 
 
@@ -209,9 +210,127 @@ def set_ranking_debug(
     )
 
 
+# --- M2: WIP queue + execution-graph persistence (EPIC-GRAPH) -------------------
+EVENT_QUEUED = "queued"                # scheduler promoted Icebox -> queued (actor=system)
+EVENT_CLOSED = "closed_before_execution"  # verify_open found the posting gone (actor=agent)
+EVENT_TAILORED = "tailored"            # tailoring loop produced a draft + ats_score (actor=agent)
+EVENT_GRAPH_ERROR = "graph_error"      # unrecoverable failure inside the graph (actor=agent)
+
+
+def count_in_flight(conn: psycopg.Connection, user_id: str) -> int:
+    """Applications currently consuming WIP capacity (queued or actively worked)."""
+    row = conn.execute(
+        """SELECT count(*) FROM application
+           WHERE user_id = %s AND wip_status IN ('queued', 'active')""",
+        (user_id,),
+    ).fetchone()
+    return int(row[0]) if row else 0
+
+
+def promote_to_queue(conn: psycopg.Connection, application_ids: list[str]) -> int:
+    """Move ranked Icebox winners into the WIP queue; thread_id = application id.
+
+    Only flips rows still in ('icebox','sourced') so a concurrent Drop/Promote can't be
+    clobbered (the Kanban write-back race in the brief's M3 risks). Writes one
+    actor='system' audit event per promoted row. Returns how many actually moved.
+    """
+    promoted = 0
+    for app_id in application_ids:
+        row = conn.execute(
+            """UPDATE application
+               SET wip_status = 'queued', status = 'queued',
+                   thread_id = id::text, updated_at = now()
+               WHERE id = %s AND wip_status = 'icebox' AND status = 'sourced'
+               RETURNING id""",
+            (app_id,),
+        ).fetchone()
+        if row is not None:
+            _event(conn, app_id, EVENT_QUEUED, {"thread_id": str(app_id)}, actor="system")
+            promoted += 1
+    return promoted
+
+
+def fetch_next_queued(conn: psycopg.Connection, user_id: str) -> dict[str, Any] | None:
+    """The oldest queued application + the job fields the execution graph needs."""
+    row = conn.execute(
+        """SELECT a.id, j.title, j.company, j.description, j.location, j.remote_mode,
+                  j.portal_url, j.portal_type
+           FROM application a JOIN job j ON j.id = a.job_id
+           WHERE a.user_id = %s AND a.wip_status = 'queued'
+           ORDER BY a.updated_at ASC LIMIT 1""",
+        (user_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return {
+        "application_id": str(row[0]), "job_title": row[1] or "", "company": row[2] or "",
+        "job_description": row[3] or "", "job_location": row[4], "remote_mode": row[5],
+        "portal_url": row[6], "portal_type": row[7],
+    }
+
+
+def fetch_resume_variants(conn: psycopg.Connection, user_id: str) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """SELECT id, profile_name, role_focus, raw_text, is_default
+           FROM resume_variant WHERE user_id = %s ORDER BY created_at""",
+        (user_id,),
+    ).fetchall()
+    return [
+        {"id": str(r[0]), "profile_name": r[1], "role_focus": r[2],
+         "raw_text": r[3], "is_default": bool(r[4])}
+        for r in rows
+    ]
+
+
+def mark_closed_before_execution(conn: psycopg.Connection, application_id: str,
+                                 detail: dict[str, Any] | None = None) -> None:
+    """verify_open found the posting gone: terminal status, WIP slot freed."""
+    conn.execute(
+        """UPDATE application SET status = 'closed_before_execution', wip_status = 'done',
+                                  updated_at = now() WHERE id = %s""",
+        (application_id,),
+    )
+    _event(conn, application_id, EVENT_CLOSED, detail or {}, actor="agent")
+
+
+def save_tailoring_result(
+    conn: psycopg.Connection,
+    application_id: str,
+    *,
+    resume_variant_id: str | None,
+    tailored_resume_text: str,
+    ats_score: float,
+    iterations: int,
+) -> None:
+    """Persist the tailoring loop's output; app stays in-flight at status='drafting'."""
+    conn.execute(
+        """UPDATE application
+           SET resume_variant_id = %s, tailored_resume_text = %s, ats_score = %s,
+               status = 'drafting', wip_status = 'active', updated_at = now()
+           WHERE id = %s""",
+        (resume_variant_id, tailored_resume_text, ats_score, application_id),
+    )
+    _event(conn, application_id, EVENT_TAILORED,
+           {"ats_score": ats_score, "iterations": iterations}, actor="agent")
+
+
+def mark_graph_error(conn: psycopg.Connection, application_id: str, error: str) -> None:
+    """Unrecoverable graph failure: status='error', parked so it surfaces in the Inbox."""
+    conn.execute(
+        """UPDATE application SET status = 'error', wip_status = 'parked', updated_at = now()
+           WHERE id = %s""",
+        (application_id,),
+    )
+    _event(conn, application_id, EVENT_GRAPH_ERROR, {"error": error}, actor="agent")
+
+
 __all__ = [
     "UpsertCounts", "connect", "ensure_operator", "upsert_icebox",
     "fetch_icebox", "promote", "drop", "set_ranking_debug",
     "EVENT_PROMOTE", "EVENT_DROP", "EVENT_HUMAN_APPROVED_UNCHANGED",
     "EVENT_HUMAN_EDITED", "EVENT_HUMAN_REJECTED",
+    "EVENT_QUEUED", "EVENT_CLOSED", "EVENT_TAILORED", "EVENT_GRAPH_ERROR",
+    "count_in_flight", "promote_to_queue", "fetch_next_queued",
+    "fetch_resume_variants", "mark_closed_before_execution",
+    "save_tailoring_result", "mark_graph_error",
 ]
