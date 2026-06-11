@@ -8,14 +8,14 @@
 
 > Your autonomous job-application co-pilot — sources, tailors, applies, and tracks, with you in the loop only when it matters.
 
-**Status:** planning + skeleton complete · **Operator:** single-operator personal tool (persona details live in the gitignored `config/profile.yaml`).
+**Status:** S1 (sourcing → Bouncer → Icebox → ranking, with geocoded geo fence) and the M2 execution-graph core (WIP scheduler, `verify_open → select_resume → Generator⇄ATS-Critic`, Postgres checkpointer) are implemented and merged; remaining M2 (embeddings/retrieval, real-model run) and M3+ are open. · **Operator:** single-operator personal tool (persona details live in the gitignored `config/profile.yaml`).
 
 ### Links
 - **GitHub repo (public):** https://github.com/kristenmartino/aeroapply
 - **GitHub Project board (69-issue backlog):** https://github.com/users/kristenmartino/projects/5
 
 ### What it does
-24/7 sourcing → Bouncer edge-filter → **Icebox** → rank (`execution_priority`) → **WIP scheduler** → *[verify open → select résumé → tailor (Generator⇄ATS-Critic) → cover letter → answer questions]* → **tiered submission gate** → API/Playwright submit → email-driven lifecycle tracking.
+24/7 sourcing → Bouncer edge-filter → **Icebox** → rank (`execution_priority`) → **WIP scheduler** → *[verify open → select résumé → tailor (Generator⇄ATS-Critic) → cover letter → answer questions]* → **tiered submission gate** → Playwright hosted-form submit (operator-approved; ADR-008) → email-driven lifecycle tracking.
 
 ### Canonical decisions
 - LangGraph supervisor + cyclic subgraphs, durable Postgres checkpointer.
