@@ -324,6 +324,29 @@ def mark_graph_error(conn: psycopg.Connection, application_id: str, error: str) 
     _event(conn, application_id, EVENT_GRAPH_ERROR, {"error": error}, actor="agent")
 
 
+# --- M2: per-run tracing (run table linkage, #31) --------------------------------
+def start_run(conn: psycopg.Connection, application_id: str, thread_id: str) -> str:
+    """Open a `run` row for one graph execution; returns its id. Caller commits."""
+    row = conn.execute(
+        """INSERT INTO run (thread_id, application_id, status)
+           VALUES (%s, %s, 'running') RETURNING id""",
+        (thread_id, application_id),
+    ).fetchone()
+    if row is None:
+        raise RuntimeError("run INSERT ... RETURNING produced no row")
+    return str(row[0])
+
+
+def finish_run(
+    conn: psycopg.Connection, run_id: str, status: str, meta: dict[str, Any] | None = None
+) -> None:
+    """Close a `run` row with its terminal status + timing/usage meta. Caller commits."""
+    conn.execute(
+        """UPDATE run SET status = %s, ended_at = now(), meta = %s WHERE id = %s""",
+        (status, Jsonb(meta or {}), run_id),
+    )
+
+
 # --- M2: resume embeddings + pgvector retrieval (#34) ----------------------------
 def _register_vector(conn: psycopg.Connection) -> None:
     """Enable the pgvector type adapter on this connection (idempotent per call)."""
@@ -386,5 +409,6 @@ __all__ = [
     "count_in_flight", "promote_to_queue", "fetch_next_queued",
     "fetch_resume_variants", "mark_closed_before_execution",
     "save_tailoring_result", "mark_graph_error",
+    "start_run", "finish_run",
     "index_resume_chunks", "retrieve_resume_chunks",
 ]
