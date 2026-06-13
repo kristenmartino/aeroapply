@@ -174,9 +174,16 @@ def run_application(
     """Run one queued application through the graph, trace it in `run`, and persist.
 
     `thread_id = application_id`, so re-running after a crash resumes from the last
-    checkpoint instead of re-spending Generator tokens. Every call opens a `run` row and
-    closes it with timing + token-usage telemetry (#31); an interrupted run leaves its row
-    `running` (honest — it didn't finish) and the resume opens a fresh one. Caller commits.
+    checkpoint (a SEPARATE checkpointer connection) instead of re-spending Generator
+    tokens. The `run` row records timing + per-model token usage (#31).
+
+    Transaction model: `start_run`/`persist`/`finish_run` all share the caller's single
+    transaction, which commits only on clean return. So a completed run leaves exactly
+    one `run` row in its terminal state; an unhandled exception (or a kill) rolls the whole
+    transaction back — no partial `run` row — and the application stays `queued` for the
+    next `work` cycle to resume from its checkpoint. (Observing in-flight/crashed runs would
+    need run telemetry on its own committed connection — deliberately out of scope here.)
+    Caller commits.
     """
     app_id = app_row["application_id"]
     tracker = UsageTracker()
@@ -191,18 +198,10 @@ def run_application(
     config = {"configurable": {"thread_id": app_id}}
     run_id = repo.start_run(conn, app_id, app_id)
     started = time.monotonic()
-    try:
-        final: ExecutionState = graph.invoke(
-            initial_state(app_row, ats_threshold=ats_threshold, max_iterations=max_iterations),
-            config=config,
-        )
-    except Exception as exc:
-        repo.finish_run(conn, run_id, OUTCOME_ERROR, {
-            "error": str(exc),
-            "duration_s": round(time.monotonic() - started, 3),
-            "usage": tracker.to_meta(),
-        })
-        raise
+    final: ExecutionState = graph.invoke(
+        initial_state(app_row, ats_threshold=ats_threshold, max_iterations=max_iterations),
+        config=config,
+    )
     duration = round(time.monotonic() - started, 3)
     outcome = persist_outcome(conn, final)
     repo.finish_run(conn, run_id, outcome, {

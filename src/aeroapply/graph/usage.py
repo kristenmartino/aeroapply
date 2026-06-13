@@ -8,6 +8,11 @@ model — which is then persisted to the `run` row's `meta`.
 Token counts are *factual* (read from the provider's `usage_metadata`). Dollar cost is
 NOT — it depends on the operator's pricing, so `estimate_cost_usd` takes a caller-supplied
 rates table and returns `None` when rates are unknown. We never invent prices.
+
+Coarseness to be aware of: we capture total `input_tokens`/`output_tokens` only, not the
+`input_token_details` breakdown (prompt-cache reads/writes). With Opus 1M-context drafting
+and caching, cached input is billed at a different rate, so a single input rate slightly
+over-estimates cost. Splitting out cache tokens is a follow-up when cost accuracy matters.
 """
 
 from __future__ import annotations
