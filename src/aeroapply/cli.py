@@ -144,10 +144,21 @@ def _cmd_work(args: argparse.Namespace) -> None:
                 ats_threshold=settings.min_ats_score,
                 max_iterations=settings.max_tailor_iterations,
             )
+        run = conn.execute(
+            "SELECT meta FROM run WHERE application_id = %s ORDER BY started_at DESC LIMIT 1",
+            (app_row["application_id"],),
+        ).fetchone()
     print(
         f"{app_row['application_id']}  outcome={final.get('outcome')} "
         f"ats_score={final.get('ats_score')} iterations={final.get('iterations')}"
     )
+    if run and run[0]:
+        usage = run[0].get("usage", {})
+        print(
+            f"  run: {run[0].get('duration_s')}s  "
+            f"tokens in/out={usage.get('input_tokens', 0)}/{usage.get('output_tokens', 0)}  "
+            f"model_calls={usage.get('calls', 0)}"
+        )
 
 
 def _cmd_ui(args: argparse.Namespace) -> None:
