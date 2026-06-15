@@ -27,6 +27,7 @@ class ExecutionState(TypedDict, total=False):
     resume_variant_id: str | None
     resume_profile_name: str | None
     resume_text: str
+    selection_method: str  # 'embedding' | 'deterministic'
 
     # retrieve (grounding context for the Generator)
     retrieved_context: list[str]
