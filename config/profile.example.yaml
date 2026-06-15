@@ -56,6 +56,10 @@ scheduler:
   wip_limit: 5            # top-N jobs promoted from Icebox per cycle
   cycle_minutes: 180      # how often the supervisor pulls work
 
+# Cover-letter policy: "always" draft one after tailoring, or "never".
+# (Per-posting "required" auto-detection is a sourcing follow-up.)
+cover_letter_mode: "always"
+
 # Autonomy gates (secure-by-default). v1 ships review-and-approve: every submission
 # needs operator approval, so the allowlist is empty (block-all) — see docs/adr/ADR-008.
 autonomy:

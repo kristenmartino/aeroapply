@@ -40,6 +40,9 @@ class ExecutionState(TypedDict, total=False):
     max_iterations: int
     ats_threshold: float
 
+    # cover_letter (when the operator opts in)
+    cover_letter: str
+
     # terminal routing
     outcome: str  # 'tailored' | 'closed' | 'error'
     error: str

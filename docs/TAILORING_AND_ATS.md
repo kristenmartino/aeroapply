@@ -190,7 +190,9 @@ Every Generator turn, Critic turn, and exit is appended to `application_event` (
 
 ## 7. Cover-letter composition
 
-After tailoring passes (or caps), `cover_letter` runs **only if the portal/job requires one** — it's a separate Generator call on `claude-opus-4-8` (1M context, fast mode, `temperature ≈ 0.6`), drawing on the just-finalized `tailored_resume_json`, the extracted keyword set, and the operator's headline/persona from `config/profile.yaml` (Senior BA/PM → AI Product Manager). It inherits the same honesty constraint: the letter may only assert what the tailored resume already substantiates — no new claims appear in the cover letter that survived the overstatement guard in the resume. Output is written to `application.cover_letter`. The cover letter is *not* re-scored by the ATS-Critic (cover letters rarely pass through keyword ATS parsers); its honesty is bounded by reusing only vetted resume content.
+After tailoring passes (or caps), the `cover_letter` node (`src/aeroapply/nodes/cover_letter.py`) drafts a letter via a separate Generator call (node `cover_letter` → drafting class), grounded on the just-finalized tailored résumé and the job. It inherits the same honesty constraint: the letter may only assert what the tailored résumé already substantiates — no new claims. Output is written to `application.cover_letter` (the `tailored` audit event flags whether one was produced). The cover letter is *not* re-scored by the ATS-Critic (cover letters rarely pass through keyword ATS parsers); its honesty is bounded by reusing only vetted résumé content.
+
+> **Implementation status (#38).** Gating is by operator preference — `profile.cover_letter_mode` (`always` | `never`, default `always`); the driver passes `cover_letter_enabled` and the node is a no-op (no tokens spent) when off. Automatic **per-posting "required" detection** is a sourcing follow-up — it needs a signal the connectors don't yet capture, so it's deliberately not invented here.
 
 ---
 
