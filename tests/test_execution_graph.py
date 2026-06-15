@@ -194,6 +194,57 @@ def test_choose_variant_precedence():
     assert choose_variant("anything", []) is None
 
 
+def test_embedding_selector_overrides_the_deterministic_pick():
+    # Deterministic would pick v-core (role_focus "Product Manager" matches the title);
+    # the injected selector picks v-default instead, and select_resume must honor it.
+    generator = FakeModel(["draft"])
+    critic = FakeModel(['{"ats_score": 0.95, "gaps": []}'])
+    seen: list[tuple[int, str]] = []
+
+    def selector(variants, job_text):
+        seen.append((len(variants), job_text))
+        return "v-default"
+
+    graph = build_execution_graph(VARIANTS, model_factory=fake_factory(generator, critic),
+                                  http_client=http_ok(), variant_selector=selector)
+    final = graph.invoke(initial_state(APP_ROW))
+
+    assert final["resume_variant_id"] == "v-default"
+    assert final["selection_method"] == "embedding"
+    assert "BASE RESUME default" in generator.prompts[0]      # chosen variant's text is used
+    assert seen and "Senior Product Manager" in seen[0][1]    # selector saw the job text
+
+
+def test_selector_returning_none_falls_back_to_deterministic():
+    generator = FakeModel(["draft"])
+    critic = FakeModel(['{"ats_score": 0.95, "gaps": []}'])
+    graph = build_execution_graph(VARIANTS, model_factory=fake_factory(generator, critic),
+                                  http_client=http_ok(), variant_selector=lambda v, j: None)
+    final = graph.invoke(initial_state(APP_ROW))
+    assert final["resume_variant_id"] == "v-core"             # deterministic role_focus match
+    assert final["selection_method"] == "deterministic"
+
+
+def test_selector_returning_unknown_id_falls_back_safely():
+    generator = FakeModel(["draft"])
+    critic = FakeModel(['{"ats_score": 0.95, "gaps": []}'])
+    graph = build_execution_graph(VARIANTS, model_factory=fake_factory(generator, critic),
+                                  http_client=http_ok(), variant_selector=lambda v, j: "ghost-id")
+    final = graph.invoke(initial_state(APP_ROW))
+    # a stale/unknown id must not crash or select nothing — fall back to deterministic
+    assert final["resume_variant_id"] == "v-core"
+    assert final["selection_method"] == "deterministic"
+
+
+def test_no_selector_defaults_to_deterministic_method_label():
+    generator = FakeModel(["draft"])
+    critic = FakeModel(['{"ats_score": 0.95, "gaps": []}'])
+    graph = build_execution_graph(VARIANTS, model_factory=fake_factory(generator, critic),
+                                  http_client=http_ok())
+    final = graph.invoke(initial_state(APP_ROW))
+    assert final["selection_method"] == "deterministic"
+
+
 def test_critic_route_exits_only_on_threshold_or_cap():
     base = {"ats_threshold": 0.9, "max_iterations": 4}
     assert critic_route({**base, "ats_score": 0.95, "iterations": 1}) == "accept"

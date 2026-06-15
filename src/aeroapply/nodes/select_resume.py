@@ -1,19 +1,27 @@
-"""select_resume (#33) — pick the base `resume_variant` for this role.
+"""select_resume (#33, embedding-ranked #34) — pick the base `resume_variant` for this role.
 
-v1 selection is deterministic and cheap: match each variant's `role_focus` (or its
-`profile_name`) as a case-insensitive substring of the job title; fall back to the
-`is_default` variant, then to the first one. Embedding-based selection arrives with
-the retrieval layer (#34). No variants at all is an unrecoverable graph error — the
-operator must load a resume before anything can be tailored.
+Two strategies, in order:
+  1. **Embedding-ranked** (when a `selector` is injected): score each variant by the mean
+     cosine similarity of its indexed `resume_chunk`s to the job text and pick the best —
+     the SQL sketched in docs/TAILORING_AND_ATS.md §2, built on the #34 retrieval layer.
+  2. **Deterministic fallback** (no selector, or no variant has chunks / clears the floor):
+     `role_focus`/`profile_name` substring of the job title > `is_default` > first.
+
+No variants at all is an unrecoverable graph error — the operator must load a resume first.
+Note: this does not set `agent_confidence` (that metric is #72); it only chooses the base.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from aeroapply.graph.state import OUTCOME_ERROR, ExecutionState, NodeFn
 
 Variant = dict[str, Any]  # {id, profile_name, role_focus, raw_text, is_default}
+
+# (variants, job_text) -> chosen variant id, or None to defer to the deterministic pick.
+VariantSelector = Callable[[list[Variant], str], str | None]
 
 
 def choose_variant(job_title: str, variants: list[Variant]) -> Variant | None:
@@ -35,23 +43,37 @@ def choose_variant(job_title: str, variants: list[Variant]) -> Variant | None:
     return variants[0]
 
 
-def make_select_resume(variants: list[Variant]) -> NodeFn:
+def make_select_resume(variants: list[Variant], selector: VariantSelector | None = None) -> NodeFn:
     """Build the node over the operator's variants (loaded once by the driver)."""
 
     def select_resume(state: ExecutionState) -> dict[str, Any]:
-        chosen = choose_variant(state.get("job_title", ""), variants)
-        if chosen is None:
+        if not variants:
             return {
                 "outcome": OUTCOME_ERROR,
                 "error": "no resume_variant rows — load a base resume before tailoring",
             }
+        chosen: Variant | None = None
+        method = "deterministic"
+        if selector is not None:
+            job_text = (
+                f"{state.get('job_title', '')}\n\n{state.get('job_description', '')}".strip()
+            )
+            chosen_id = selector(variants, job_text)
+            if chosen_id is not None:
+                chosen = next((v for v in variants if v["id"] == chosen_id), None)
+                if chosen is not None:
+                    method = "embedding"
+        if chosen is None:  # no selector, undecided, or stale id -> deterministic
+            chosen = choose_variant(state.get("job_title", ""), variants)
+        assert chosen is not None  # variants is non-empty, so choose_variant returns one
         return {
             "resume_variant_id": chosen["id"],
             "resume_profile_name": chosen.get("profile_name"),
             "resume_text": chosen.get("raw_text") or "",
+            "selection_method": method,
         }
 
     return select_resume
 
 
-__all__ = ["make_select_resume", "choose_variant"]
+__all__ = ["make_select_resume", "choose_variant", "VariantSelector"]

@@ -619,3 +619,76 @@ def test_run_row_records_closed_outcome():
     finally:
         conn.rollback()
         conn.close()
+
+
+# --- M2: embedding-ranked résumé-variant selection (#34) ---------------------------
+def test_db_variant_selector_picks_the_semantically_closest_variant():
+    """Two indexed variants; the selector picks the one whose chunks match the job, even
+    when the deterministic substring pick would choose the other. Uses HashEmbedder so
+    similarity order is reproducible in CI."""
+    from aeroapply.config import load_profile
+    from aeroapply.db import repo
+    from aeroapply.embeddings import HashEmbedder
+    from aeroapply.graph.execution import make_db_variant_selector
+    from aeroapply.nodes.select_resume import choose_variant
+
+    profile = load_profile(EXAMPLE)
+    embedder = HashEmbedder(dim=1536)
+    conn = repo.connect(os.environ["DATABASE_URL"])
+    try:
+        user_id = repo.ensure_operator(conn, profile)
+
+        def make_variant(profile_name, role_focus, chunk_text, is_default=False):
+            vid = conn.execute(
+                """INSERT INTO resume_variant (user_id, profile_name, role_focus, raw_text, is_default)
+                   VALUES (%s, %s, %s, %s, %s) RETURNING id""",
+                (user_id, profile_name, role_focus, chunk_text, is_default),
+            ).fetchone()[0]
+            repo.index_resume_chunks(conn, str(vid), [("Experience", chunk_text)],
+                                     embedder.embed([chunk_text]))
+            return str(vid)
+
+        # 'data' variant has is_default=True AND its role_focus would NOT substring-match;
+        # 'pm' variant's chunk text matches the job. Deterministic would pick the default
+        # ('data') since neither role_focus is in the title; embedding should pick 'pm'.
+        data_id = make_variant("Data Eng base", "Data Engineer",
+                               "kafka spark hadoop distributed data pipelines", is_default=True)
+        pm_id = make_variant("PM base", "Program Lead",
+                             "product roadmap stakeholder discovery analytics prioritization")
+
+        variants = repo.fetch_resume_variants(conn, user_id)
+        job_text = "Product Manager — own the roadmap, stakeholder discovery, analytics"
+
+        # deterministic baseline: no role_focus substring matches -> the is_default ('data')
+        assert choose_variant("Product Manager", variants)["id"] == data_id
+
+        # embedding selector: the 'pm' variant's chunks are closer to the job -> picks pm
+        selector = make_db_variant_selector(conn, embedder)
+        assert selector(variants, job_text) == pm_id
+    finally:
+        conn.rollback()
+        conn.close()
+
+
+def test_db_variant_selector_returns_none_when_no_variant_has_chunks():
+    """Unindexed variants -> selector returns None so select_resume falls back."""
+    from aeroapply.config import load_profile
+    from aeroapply.db import repo
+    from aeroapply.embeddings import HashEmbedder
+    from aeroapply.graph.execution import make_db_variant_selector
+
+    profile = load_profile(EXAMPLE)
+    conn = repo.connect(os.environ["DATABASE_URL"])
+    try:
+        user_id = repo.ensure_operator(conn, profile)
+        conn.execute(
+            """INSERT INTO resume_variant (user_id, profile_name, role_focus, raw_text, is_default)
+               VALUES (%s, 'Unindexed', 'X', 'no chunks', TRUE)""",
+            (user_id,),
+        )
+        variants = repo.fetch_resume_variants(conn, user_id)
+        selector = make_db_variant_selector(conn, HashEmbedder(dim=1536))
+        assert selector(variants, "any job text") is None
+    finally:
+        conn.rollback()
+        conn.close()

@@ -36,7 +36,7 @@ from aeroapply.graph.state import (
 )
 from aeroapply.graph.usage import UsageTracker, wrap_factory_with_usage
 from aeroapply.nodes.retrieve import Retriever, make_retrieve
-from aeroapply.nodes.select_resume import Variant, make_select_resume
+from aeroapply.nodes.select_resume import Variant, VariantSelector, make_select_resume
 from aeroapply.nodes.tailor import (
     DEFAULT_ATS_THRESHOLD,
     DEFAULT_MAX_ITERATIONS,
@@ -68,20 +68,22 @@ def build_execution_graph(
     *,
     model_factory: ModelFactory | None = None,
     http_client: httpx.Client | None = None,
+    variant_selector: VariantSelector | None = None,
     retriever: Retriever | None = None,
     checkpointer: Any = None,
     interrupt_before: list[str] | None = None,
 ) -> Any:
     """Compile the M2 execution graph. Every dependency is injectable for tests.
 
-    `retriever` grounds the Generator on the chosen variant's most-relevant chunks (#34);
-    None makes the `retrieve` node a pass-through (ungrounded fallback).
+    `variant_selector` ranks résumé variants by embedding similarity (#34); None falls
+    back to the deterministic substring pick. `retriever` grounds the Generator on the
+    chosen variant's most-relevant chunks; None makes `retrieve` a pass-through.
     """
     models = model_factory or _default_model_factory()
 
     g = StateGraph(ExecutionState)
     g.add_node("verify_open", make_verify_open(http_client))
-    g.add_node("select_resume", make_select_resume(variants))
+    g.add_node("select_resume", make_select_resume(variants, variant_selector))
     g.add_node("retrieve", make_retrieve(retriever))
     g.add_node("generate", make_generate(models))
     g.add_node("critic", make_critic(models))
@@ -159,6 +161,36 @@ def make_db_retriever(conn: psycopg.Connection, embedder: Any, *, k: int = 5) ->
     return retrieve
 
 
+def make_db_variant_selector(
+    conn: psycopg.Connection, embedder: Any, *, k: int = 8, min_similarity: float = 0.0
+) -> VariantSelector:
+    """A `selector(variants, job_text)` ranking variants by mean chunk similarity (#34).
+
+    Embeds the job once, then scores each variant by the mean cosine similarity
+    (`1 - distance`) of its top-k indexed chunks. Returns the best variant's id, or None
+    when no variant has chunks or none clears `min_similarity` (the caller then falls back
+    to the deterministic pick). `min_similarity` default 0.0 means "best non-empty wins";
+    a real floor is a calibration decision (#58), not hard-coded here.
+    """
+
+    def select(variants: list[Variant], job_text: str) -> str | None:
+        query_vec = embedder.embed([job_text])[0]
+        best_id: str | None = None
+        best_score: float | None = None
+        for v in variants:
+            hits = repo.retrieve_resume_chunks(conn, v["id"], query_vec, k=k)
+            if not hits:
+                continue
+            score = sum(1.0 - dist for _text, dist in hits) / len(hits)
+            if best_score is None or score > best_score:
+                best_id, best_score = v["id"], score
+        if best_id is None or (best_score is not None and best_score < min_similarity):
+            return None
+        return best_id
+
+    return select
+
+
 def run_application(
     conn: psycopg.Connection,
     app_row: dict[str, Any],
@@ -166,6 +198,7 @@ def run_application(
     *,
     model_factory: ModelFactory | None = None,
     http_client: httpx.Client | None = None,
+    variant_selector: VariantSelector | None = None,
     retriever: Retriever | None = None,
     checkpointer: Any = None,
     ats_threshold: float = DEFAULT_ATS_THRESHOLD,
@@ -192,6 +225,7 @@ def run_application(
         variants,
         model_factory=wrap_factory_with_usage(base_factory, tracker),
         http_client=http_client,
+        variant_selector=variant_selector,
         retriever=retriever,
         checkpointer=checkpointer,
     )
@@ -218,5 +252,6 @@ __all__ = [
     "initial_state",
     "persist_outcome",
     "make_db_retriever",
+    "make_db_variant_selector",
     "run_application",
 ]

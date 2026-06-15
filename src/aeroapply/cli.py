@@ -120,7 +120,11 @@ def _cmd_work(args: argparse.Namespace) -> None:
     from aeroapply.db import repo
     from aeroapply.embeddings import build_default_embedder, validate_dim
     from aeroapply.graph.checkpoint import postgres_checkpointer
-    from aeroapply.graph.execution import make_db_retriever, run_application
+    from aeroapply.graph.execution import (
+        make_db_retriever,
+        make_db_variant_selector,
+        run_application,
+    )
 
     settings = get_settings()
     profile = _resolve_profile(args)
@@ -132,13 +136,16 @@ def _cmd_work(args: argparse.Namespace) -> None:
             return
         variants = repo.fetch_resume_variants(conn, user_id)
         retriever = None
+        variant_selector = None
         if not args.no_retrieval:
             embedder = build_default_embedder(settings.embedding_model, settings.embedding_dim)
             validate_dim(embedder, settings.embedding_dim)
             retriever = make_db_retriever(conn, embedder)
+            variant_selector = make_db_variant_selector(conn, embedder)
         with postgres_checkpointer(settings.database_url) as saver:
             final = run_application(
                 conn, app_row, variants,
+                variant_selector=variant_selector,
                 retriever=retriever,
                 checkpointer=saver,
                 ats_threshold=settings.min_ats_score,
@@ -150,7 +157,8 @@ def _cmd_work(args: argparse.Namespace) -> None:
         ).fetchone()
     print(
         f"{app_row['application_id']}  outcome={final.get('outcome')} "
-        f"ats_score={final.get('ats_score')} iterations={final.get('iterations')}"
+        f"ats_score={final.get('ats_score')} iterations={final.get('iterations')} "
+        f"resume={final.get('resume_profile_name')} ({final.get('selection_method')})"
     )
     if run and run[0]:
         usage = run[0].get("usage", {})
@@ -217,7 +225,7 @@ def main() -> None:
         help="run the next queued application through the graph (needs model API keys)",
     )
     p_work.add_argument("--no-retrieval", action="store_true",
-                        help="skip resume-chunk grounding (use the full base resume)")
+                        help="disable embeddings: deterministic résumé pick + ungrounded Generator")
     add_profile_arg(p_work)
     p_work.set_defaults(func=_cmd_work)
 
