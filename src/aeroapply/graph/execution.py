@@ -20,6 +20,7 @@ so a killed worker resumes mid-loop from the last checkpoint.
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import httpx
@@ -33,6 +34,7 @@ from aeroapply.graph.state import (
     OUTCOME_TAILORED,
     ExecutionState,
 )
+from aeroapply.graph.usage import UsageTracker, wrap_factory_with_usage
 from aeroapply.nodes.retrieve import Retriever, make_retrieve
 from aeroapply.nodes.select_resume import Variant, make_select_resume
 from aeroapply.nodes.tailor import (
@@ -169,24 +171,45 @@ def run_application(
     ats_threshold: float = DEFAULT_ATS_THRESHOLD,
     max_iterations: int = DEFAULT_MAX_ITERATIONS,
 ) -> ExecutionState:
-    """Run one queued application through the graph and persist its outcome.
+    """Run one queued application through the graph, trace it in `run`, and persist.
 
     `thread_id = application_id`, so re-running after a crash resumes from the last
-    checkpoint instead of re-spending Generator tokens. The caller commits.
+    checkpoint (a SEPARATE checkpointer connection) instead of re-spending Generator
+    tokens. The `run` row records timing + per-model token usage (#31).
+
+    Transaction model: `start_run`/`persist`/`finish_run` all share the caller's single
+    transaction, which commits only on clean return. So a completed run leaves exactly
+    one `run` row in its terminal state; an unhandled exception (or a kill) rolls the whole
+    transaction back — no partial `run` row — and the application stays `queued` for the
+    next `work` cycle to resume from its checkpoint. (Observing in-flight/crashed runs would
+    need run telemetry on its own committed connection — deliberately out of scope here.)
+    Caller commits.
     """
+    app_id = app_row["application_id"]
+    tracker = UsageTracker()
+    base_factory = model_factory or _default_model_factory()
     graph = build_execution_graph(
         variants,
-        model_factory=model_factory,
+        model_factory=wrap_factory_with_usage(base_factory, tracker),
         http_client=http_client,
         retriever=retriever,
         checkpointer=checkpointer,
     )
-    config = {"configurable": {"thread_id": app_row["application_id"]}}
+    config = {"configurable": {"thread_id": app_id}}
+    run_id = repo.start_run(conn, app_id, app_id)
+    started = time.monotonic()
     final: ExecutionState = graph.invoke(
         initial_state(app_row, ats_threshold=ats_threshold, max_iterations=max_iterations),
         config=config,
     )
-    persist_outcome(conn, final)
+    duration = round(time.monotonic() - started, 3)
+    outcome = persist_outcome(conn, final)
+    repo.finish_run(conn, run_id, outcome, {
+        "duration_s": duration,
+        "iterations": int(final.get("iterations", 0)),
+        "ats_score": final.get("ats_score"),
+        "usage": tracker.to_meta(),
+    })
     return final
 
 

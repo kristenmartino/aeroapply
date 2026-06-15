@@ -8,7 +8,7 @@
 
 > Your autonomous job-application co-pilot — sources, tailors, applies, and tracks, with you in the loop only when it matters.
 
-**Status:** S1 (sourcing → Bouncer → Icebox → ranking, with geocoded geo fence) and the M2 execution-graph core (WIP scheduler, `verify_open → select_resume → Generator⇄ATS-Critic`, Postgres checkpointer) are implemented and merged; remaining M2 (embeddings/retrieval, real-model run) and M3+ are open. · **Operator:** single-operator personal tool (persona details live in the gitignored `config/profile.yaml`).
+**Status:** S1 (sourcing → Bouncer → Icebox → ranking, with geocoded geo fence) and the M2 execution graph (WIP scheduler; `verify_open → select_resume → retrieve → Generator⇄ATS-Critic`; pgvector résumé-chunk grounding; Postgres checkpointer; per-run timing + token telemetry) are implemented and merged. Remaining M2: the real-model `aeroapply work` run (needs an API key) + embedding-ranked variant selection; then M3 (cover letters, AITL, submission gate, Streamlit Inbox). · **Operator:** single-operator personal tool (persona details live in the gitignored `config/profile.yaml`).
 
 ### Links
 - **GitHub repo (public):** https://github.com/kristenmartino/aeroapply

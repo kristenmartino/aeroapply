@@ -489,3 +489,133 @@ def test_work_path_grounds_generator_from_indexed_chunks():
     finally:
         conn.rollback()
         conn.close()
+
+
+# --- M2: per-run tracing (run table linkage, #31) ----------------------------------
+def test_run_application_traces_a_run_row_with_timing_and_usage():
+    """run_application opens + closes a `run` row linked to the application, with the
+    terminal status and a timing/usage meta block (#31)."""
+    import httpx
+
+    from aeroapply.config import load_profile
+    from aeroapply.connectors.base import NormalizedPosting
+    from aeroapply.db import repo
+    from aeroapply.graph.execution import run_application
+    from aeroapply.graph.state import OUTCOME_TAILORED
+
+    class FakeMsg:
+        def __init__(self, content):
+            self.content = content
+            self.usage_metadata = {"input_tokens": 30, "output_tokens": 12}
+            self.response_metadata = {"model": "fake-model"}
+
+    class FakeModel:
+        def __init__(self, replies):
+            self.replies = list(replies)
+
+        def invoke(self, prompt):
+            return FakeMsg(self.replies.pop(0))
+
+    profile = load_profile(EXAMPLE)
+    conn = repo.connect(os.environ["DATABASE_URL"])
+    try:
+        user_id = repo.ensure_operator(conn, profile)
+        posting = NormalizedPosting(
+            source_key="greenhouse", external_id="zzrun1", company="ZZRunCo",
+            title="ZZTEST Product Manager", remote_mode="remote", location="Remote",
+            description="roadmap analytics",
+        )
+        repo.upsert_icebox(conn, user_id, [posting])
+        app_id = next(aid for aid, job, _ in repo.fetch_icebox(conn, user_id)
+                      if job["title"] == "ZZTEST Product Manager")
+        variants = [{"id": None, "profile_name": "ZZ base", "role_focus": "Product Manager",
+                     "raw_text": "BASE", "is_default": True}]
+        # a real resume_variant id so save_tailoring_result's FK holds
+        rv = conn.execute(
+            """INSERT INTO resume_variant (user_id, profile_name, role_focus, raw_text)
+               VALUES (%s, 'ZZ base', 'Product Manager', 'BASE') RETURNING id""",
+            (user_id,),
+        ).fetchone()[0]
+        variants[0]["id"] = str(rv)
+
+        gen = FakeModel(["tailored draft"])
+        crit = FakeModel(['{"ats_score": 0.95, "gaps": []}'])
+        app_row = {
+            "application_id": app_id, "job_title": "Product Manager", "company": "ZZRunCo",
+            "job_description": "roadmap analytics", "job_location": "Remote",
+            "portal_url": None, "portal_type": "greenhouse",
+        }
+        final = run_application(
+            conn, app_row, variants,
+            model_factory=lambda n: gen if n == "tailor.generator" else crit,
+            http_client=httpx.Client(transport=httpx.MockTransport(
+                lambda r: httpx.Response(200, text="open"))),
+        )
+        assert final["outcome"] == OUTCOME_TAILORED
+
+        run = conn.execute(
+            """SELECT status, application_id, thread_id, started_at, ended_at, meta
+               FROM run WHERE application_id = %s ORDER BY started_at DESC LIMIT 1""",
+            (app_id,),
+        ).fetchone()
+        status, run_app_id, thread_id, started, ended, meta = run
+        assert status == "tailored"
+        assert str(run_app_id) == app_id and thread_id == app_id
+        assert started is not None and ended is not None       # row was closed
+        assert "duration_s" in meta and meta["iterations"] == 1
+        assert float(meta["ats_score"]) == 0.95
+        # token usage captured from the (fake) model responses: 2 calls x (30 in, 12 out)
+        usage = meta["usage"]
+        assert usage["calls"] == 2
+        assert usage["input_tokens"] == 60 and usage["output_tokens"] == 24
+        assert usage["by_model"]["fake-model"]["calls"] == 2
+    finally:
+        conn.rollback()
+        conn.close()
+
+
+def test_run_row_records_closed_outcome():
+    """A posting that 404s closes the application AND records a `closed` run row."""
+    import httpx
+
+    from aeroapply.config import load_profile
+    from aeroapply.connectors.base import NormalizedPosting
+    from aeroapply.db import repo
+    from aeroapply.graph.execution import run_application
+
+    profile = load_profile(EXAMPLE)
+    conn = repo.connect(os.environ["DATABASE_URL"])
+    try:
+        user_id = repo.ensure_operator(conn, profile)
+        posting = NormalizedPosting(
+            source_key="greenhouse", external_id="zzrun2", company="ZZRunCo",
+            title="ZZTEST Product Manager", remote_mode="remote", location="Remote",
+            portal_url="https://boards.example.com/jobs/gone",
+        )
+        repo.upsert_icebox(conn, user_id, [posting])
+        app_id = next(aid for aid, job, _ in repo.fetch_icebox(conn, user_id)
+                      if job["title"] == "ZZTEST Product Manager")
+        app_row = {
+            "application_id": app_id, "job_title": "Product Manager", "company": "ZZRunCo",
+            "job_description": "x", "job_location": "Remote",
+            "portal_url": "https://boards.example.com/jobs/gone", "portal_type": "greenhouse",
+        }
+        final = run_application(
+            conn, app_row, [{"id": "x", "profile_name": "p", "role_focus": None,
+                             "raw_text": "B", "is_default": True}],
+            model_factory=lambda n: None,  # never called — verify_open short-circuits
+            http_client=httpx.Client(transport=httpx.MockTransport(
+                lambda r: httpx.Response(404, text="gone"))),
+        )
+        assert final["outcome"] == "closed"
+        run = conn.execute(
+            "SELECT status, ended_at FROM run WHERE application_id = %s ORDER BY started_at DESC LIMIT 1",
+            (app_id,),
+        ).fetchone()
+        assert run[0] == "closed" and run[1] is not None
+        # application also moved to the terminal state
+        st = conn.execute("SELECT status FROM application WHERE id = %s", (app_id,)).fetchone()[0]
+        assert st == "closed_before_execution"
+    finally:
+        conn.rollback()
+        conn.close()

@@ -116,7 +116,7 @@ Note `execution_priority` is **not a column** — it is computed live by `src/ae
 
 Drafting routes to `claude-opus-4-8` (1M context, fast mode); the ATS-Critic and validators to `claude-sonnet-4-6` at `temperature=0`; high-volume extraction/sourcing and the hourly email classifier to `claude-haiku-4-5` (or local Llama via Ollama). Model + settings are config, never hard-coded.
 
-**`run`** — maps a LangGraph execution to an application for observability. `thread_id`, `application_id` (cascade), `status`, `started_at`/`ended_at`, `meta JSONB`. One application can have many runs (each freeze/resume cycle).
+**`run`** — maps a LangGraph execution to an application for observability. `thread_id`, `application_id` (cascade), `status`, `started_at`/`ended_at`, `meta JSONB`. One application can have many runs (each `work` invocation). `run_application` (#31) writes one row per completed execution with the terminal status (`tailored`/`closed`/`error`) plus a `meta` block: `duration_s`, `iterations`, `ats_score`, and `usage` (per-model `input_tokens`/`output_tokens`/`calls`, metered from the providers' `usage_metadata`). Token counts are factual; dollar cost is left to `graph.usage.estimate_cost_usd(usage, rates)` with operator-supplied per-model rates (we ship none). The row shares the driver's single transaction, so it appears only on clean completion (already in its terminal state); a crashed/killed run rolls back leaving no row, and the application stays `queued` to resume from its checkpoint. Observing in-flight runs would require committing run telemetry on its own connection — a deliberate future enhancement, not present.
 
 ## State machines
 
