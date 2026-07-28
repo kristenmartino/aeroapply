@@ -1,6 +1,6 @@
 """Execution-graph assembly + the run driver (#30, #31).
 
-Graph shape (M2 slice — cover_letter / answer_questions / the submission gate are M3):
+Graph shape (answer_questions / the submission gate are M3):
 
     verify_open ──closed──────────────► END
         │ open
@@ -8,8 +8,8 @@ Graph shape (M2 slice — cover_letter / answer_questions / the submission gate 
     select_resume ──error─────────────► END
         │ ok
         ▼
-    generate ◄──── revise ─── critic
-        └────────────────────► critic ──accept──► finalize ──► END
+    retrieve ──► generate ◄──── revise ─── critic
+        └──────────────────────► critic ──accept──► finalize ──► cover_letter ──► END
 
 All IO is injected: models via a `node -> chat model` factory (default ModelRouter),
 HTTP via an optional httpx client, resume variants as plain dicts. The graph itself
@@ -35,6 +35,7 @@ from aeroapply.graph.state import (
     ExecutionState,
 )
 from aeroapply.graph.usage import UsageTracker, wrap_factory_with_usage
+from aeroapply.nodes.cover_letter import make_cover_letter
 from aeroapply.nodes.retrieve import Retriever, make_retrieve
 from aeroapply.nodes.select_resume import Variant, VariantSelector, make_select_resume
 from aeroapply.nodes.tailor import (
@@ -70,14 +71,16 @@ def build_execution_graph(
     http_client: httpx.Client | None = None,
     variant_selector: VariantSelector | None = None,
     retriever: Retriever | None = None,
+    cover_letter_enabled: bool = False,
     checkpointer: Any = None,
     interrupt_before: list[str] | None = None,
 ) -> Any:
-    """Compile the M2 execution graph. Every dependency is injectable for tests.
+    """Compile the M2/M3 execution graph. Every dependency is injectable for tests.
 
     `variant_selector` ranks résumé variants by embedding similarity (#34); None falls
     back to the deterministic substring pick. `retriever` grounds the Generator on the
     chosen variant's most-relevant chunks; None makes `retrieve` a pass-through.
+    `cover_letter_enabled` draws a cover letter after tailoring (#38); False is a no-op.
     """
     models = model_factory or _default_model_factory()
 
@@ -88,6 +91,7 @@ def build_execution_graph(
     g.add_node("generate", make_generate(models))
     g.add_node("critic", make_critic(models))
     g.add_node("finalize", finalize)
+    g.add_node("cover_letter", make_cover_letter(models, enabled=cover_letter_enabled))
 
     g.set_entry_point("verify_open")
     g.add_conditional_edges("verify_open", _after_verify,
@@ -98,7 +102,8 @@ def build_execution_graph(
     g.add_edge("generate", "critic")
     g.add_conditional_edges("critic", critic_route,
                             {"revise": "generate", "accept": "finalize"})
-    g.add_edge("finalize", END)
+    g.add_edge("finalize", "cover_letter")
+    g.add_edge("cover_letter", END)
 
     return g.compile(checkpointer=checkpointer, interrupt_before=interrupt_before or [])
 
@@ -140,6 +145,7 @@ def persist_outcome(conn: psycopg.Connection, final: ExecutionState) -> str:
             tailored_resume_text=final.get("draft_resume_text", ""),
             ats_score=float(final.get("ats_score", 0.0)),
             iterations=int(final.get("iterations", 0)),
+            cover_letter=final.get("cover_letter"),
         )
     else:
         repo.mark_graph_error(conn, app_id, final.get("error", "graph ended without outcome"))
@@ -200,6 +206,7 @@ def run_application(
     http_client: httpx.Client | None = None,
     variant_selector: VariantSelector | None = None,
     retriever: Retriever | None = None,
+    cover_letter_enabled: bool = False,
     checkpointer: Any = None,
     ats_threshold: float = DEFAULT_ATS_THRESHOLD,
     max_iterations: int = DEFAULT_MAX_ITERATIONS,
@@ -227,6 +234,7 @@ def run_application(
         http_client=http_client,
         variant_selector=variant_selector,
         retriever=retriever,
+        cover_letter_enabled=cover_letter_enabled,
         checkpointer=checkpointer,
     )
     config = {"configurable": {"thread_id": app_id}}
