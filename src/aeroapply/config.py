@@ -128,6 +128,17 @@ class Profile(BaseModel):
     ranking_weights: RankingWeights
     scheduler: SchedulerCfg = Field(default_factory=SchedulerCfg)
     autonomy: AutonomyCfg = Field(default_factory=AutonomyCfg)
+    # Cover-letter policy: "always" generate one, or "never". Per-posting "required"
+    # auto-detection is a sourcing follow-up — this is the operator's default preference.
+    cover_letter_mode: str = "always"
+
+    @model_validator(mode="after")
+    def _validate_cover_letter_mode(self) -> Profile:
+        if self.cover_letter_mode not in {"always", "never"}:
+            raise ValueError(
+                f"cover_letter_mode must be 'always' or 'never', got {self.cover_letter_mode!r}"
+            )
+        return self
 
     def to_bouncer_config(self) -> BouncerConfig:
         """Build the dataclass the SourcingBouncer consumes."""

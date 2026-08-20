@@ -147,6 +147,7 @@ def _cmd_work(args: argparse.Namespace) -> None:
                 conn, app_row, variants,
                 variant_selector=variant_selector,
                 retriever=retriever,
+                cover_letter_enabled=(profile.cover_letter_mode == "always"),
                 checkpointer=saver,
                 ats_threshold=settings.min_ats_score,
                 max_iterations=settings.max_tailor_iterations,
@@ -155,10 +156,12 @@ def _cmd_work(args: argparse.Namespace) -> None:
             "SELECT meta FROM run WHERE application_id = %s ORDER BY started_at DESC LIMIT 1",
             (app_row["application_id"],),
         ).fetchone()
+    cover = final.get("cover_letter")
     print(
         f"{app_row['application_id']}  outcome={final.get('outcome')} "
         f"ats_score={final.get('ats_score')} iterations={final.get('iterations')} "
-        f"resume={final.get('resume_profile_name')} ({final.get('selection_method')})"
+        f"resume={final.get('resume_profile_name')} ({final.get('selection_method')}) "
+        f"cover_letter={'yes' if cover else 'no'}"
     )
     if run and run[0]:
         usage = run[0].get("usage", {})

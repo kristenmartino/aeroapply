@@ -25,6 +25,17 @@ def test_example_profile_loads_and_validates():
     assert p.operator.name == "Alex Example"
     assert p.search_profile.salary_floor == 100000
     assert any("Product Manager" in t.title for t in p.target_roles)
+    assert p.cover_letter_mode == "always"   # default when unset in the YAML
+
+
+def test_cover_letter_mode_validation():
+    import pytest
+    from pydantic import ValidationError
+
+    base = load_profile(EXAMPLE).model_dump()
+    base["cover_letter_mode"] = "sometimes"
+    with pytest.raises(ValidationError):
+        Profile.model_validate(base)
 
 
 def test_ranking_weights_sum_to_one():

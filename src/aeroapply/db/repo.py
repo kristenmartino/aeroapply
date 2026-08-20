@@ -301,17 +301,24 @@ def save_tailoring_result(
     tailored_resume_text: str,
     ats_score: float,
     iterations: int,
+    cover_letter: str | None = None,
 ) -> None:
-    """Persist the tailoring loop's output; app stays in-flight at status='drafting'."""
+    """Persist the tailoring loop's output (+ optional cover letter); status='drafting'.
+
+    `cover_letter` uses COALESCE so a None (cover letters disabled) preserves any existing
+    value rather than nulling it on a re-run.
+    """
     conn.execute(
         """UPDATE application
            SET resume_variant_id = %s, tailored_resume_text = %s, ats_score = %s,
+               cover_letter = COALESCE(%s, cover_letter),
                status = 'drafting', wip_status = 'active', updated_at = now()
            WHERE id = %s""",
-        (resume_variant_id, tailored_resume_text, ats_score, application_id),
+        (resume_variant_id, tailored_resume_text, ats_score, cover_letter, application_id),
     )
     _event(conn, application_id, EVENT_TAILORED,
-           {"ats_score": ats_score, "iterations": iterations}, actor="agent")
+           {"ats_score": ats_score, "iterations": iterations,
+            "cover_letter": cover_letter is not None}, actor="agent")
 
 
 def mark_graph_error(conn: psycopg.Connection, application_id: str, error: str) -> None:

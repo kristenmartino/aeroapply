@@ -692,3 +692,77 @@ def test_db_variant_selector_returns_none_when_no_variant_has_chunks():
     finally:
         conn.rollback()
         conn.close()
+
+
+# --- M3: cover-letter node persistence (#38) ---------------------------------------
+def test_cover_letter_persisted_when_enabled():
+    """With cover_letter_enabled, run_application drafts a letter and saves it to
+    application.cover_letter, and the tailored event flags cover_letter=True."""
+    import httpx
+
+    from aeroapply.config import load_profile
+    from aeroapply.connectors.base import NormalizedPosting
+    from aeroapply.db import repo
+    from aeroapply.graph.execution import run_application
+    from aeroapply.graph.state import OUTCOME_TAILORED
+
+    class FakeModel:
+        def __init__(self, replies):
+            self.replies = list(replies)
+
+        def invoke(self, prompt):
+            return type("M", (), {"content": self.replies.pop(0)})()
+
+    profile = load_profile(EXAMPLE)
+    conn = repo.connect(os.environ["DATABASE_URL"])
+    try:
+        user_id = repo.ensure_operator(conn, profile)
+        rv = conn.execute(
+            """INSERT INTO resume_variant (user_id, profile_name, role_focus, raw_text)
+               VALUES (%s, 'ZZCL base', 'Product Manager', 'BASE') RETURNING id""",
+            (user_id,),
+        ).fetchone()[0]
+        posting = NormalizedPosting(
+            source_key="greenhouse", external_id="zzcl1", company="ZZCLCo",
+            title="ZZTEST Product Manager", remote_mode="remote", location="Remote",
+            description="roadmap",
+        )
+        repo.upsert_icebox(conn, user_id, [posting])
+        app_id = next(aid for aid, job, _ in repo.fetch_icebox(conn, user_id)
+                      if job["title"] == "ZZTEST Product Manager")
+
+        gen = FakeModel(["tailored draft"])
+        crit = FakeModel(['{"ats_score": 0.95, "gaps": []}'])
+        cover = FakeModel(["Dear hiring team, grounded letter."])
+
+        def factory(node):
+            return {"tailor.generator": gen, "tailor.critic": crit, "cover_letter": cover}[node]
+
+        app_row = {
+            "application_id": app_id, "job_title": "Product Manager", "company": "ZZCLCo",
+            "job_description": "roadmap", "job_location": "Remote",
+            "portal_url": None, "portal_type": "greenhouse",
+        }
+        final = run_application(
+            conn, app_row,
+            [{"id": str(rv), "profile_name": "ZZCL base", "role_focus": "Product Manager",
+              "raw_text": "BASE", "is_default": True}],
+            model_factory=factory,
+            http_client=httpx.Client(transport=httpx.MockTransport(
+                lambda r: httpx.Response(200, text="open"))),
+            cover_letter_enabled=True,
+        )
+        assert final["outcome"] == OUTCOME_TAILORED
+        cl = conn.execute(
+            "SELECT cover_letter FROM application WHERE id = %s", (app_id,)
+        ).fetchone()[0]
+        assert cl == "Dear hiring team, grounded letter."
+        ev = conn.execute(
+            """SELECT payload FROM application_event
+               WHERE application_id = %s AND event_type = %s ORDER BY created_at DESC LIMIT 1""",
+            (app_id, repo.EVENT_TAILORED),
+        ).fetchone()[0]
+        assert ev["cover_letter"] is True
+    finally:
+        conn.rollback()
+        conn.close()
