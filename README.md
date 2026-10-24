@@ -1,30 +1,28 @@
 # AeroApply
 
-> Your autonomous job-application co-pilot — sources, tailors, applies, and tracks, with you in the loop only when it matters.
+A pre-alpha tool for sourcing jobs and drafting application materials for one
+operator. The current code includes Greenhouse sourcing, filtering and ranking,
+a WIP-limited queue, résumé retrieval, a generator/critic tailoring loop, and
+optional cover-letter drafting.
 
-AeroApply is a persistent, always-on multi-agent daemon that sources relevant roles 24/7, tailors a chosen résumé variant for each (with ATS-keyword optimization via a writer⇄critic loop), writes cover letters, answers screening questions from your history, files the application through the portal's hosted form with your approval, and tracks the full lifecycle through email — pausing for **you** only on genuine product/judgment decisions.
+The execution graph currently stops after drafting. It does not implement an
+end-to-end application submission or email lifecycle workflow. The inbound-email
+service contains integration stubs that raise `NotImplementedError`.
 
-**Status:** pre-alpha / planning + skeleton. **Public-safe scaffold** for a private, single-operator tool — no real résumés, credentials, or PII are committed (real values live only in `.env` and `config/profile.yaml`, both gitignored). See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+## Current scope
 
----
+| Component | Status |
+|---|---|
+| Greenhouse sourcing, filters, ranking, and Kanban UI | Implemented components; require local setup and profile configuration |
+| Résumé indexing, retrieval, and generator/critic loop | Implemented; model keys and database required |
+| Optional cover-letter node | Implemented; enabled separately |
+| Screening-question answers and submission approval | Planned integration |
+| Browser submission, account creation, credential vault | Planned |
+| Email-driven status updates and OTP continuation | Starter service; graph/database wiring is incomplete |
 
-## What it does
-
-```
-24/7 sourcing → Bouncer edge-filter → Icebox backlog → rank (execution_priority) → WIP scheduler
-   → [verify open → select résumé → tailor (Generator⇄ATS-Critic) → cover letter → answer questions]
-   → submission gate (review-and-approve in v1) → Playwright hosted-form submit → email-driven lifecycle tracking
-```
-
-- **Multi-résumé intake** + many target roles + rich filters (location, distance, remote/hybrid/onsite, language, salary floor, on-LinkedIn-or-not).
-- **Two-tier backlog** so 200 scraped jobs don't spin up 200 expensive agents: a cheap-model **Icebox** feeds a WIP-limited **execution queue**.
-- **Résumé tailoring + ATS** via a cyclic Generator (Opus) ⇄ ATS-Critic (Sonnet/DeepSeek) loop with an overstatement guard.
-- **Tiered autonomy, secure-by-default:** every v1 submission is operator-approved (candidate-side ATS apply APIs don't exist — see ADR-008); Workday/LinkedIn/novel-questions/EEO always pause for you; unattended auto-submit is deferred post-v1.
-- **Account creation + Fernet-encrypted credential vault**; OTP codes injected into a paused browser thread via an inbound-email webhook.
-- **Lifecycle tracking:** hourly IMAP poll → classifier → status updates + forward-to-your-inbox.
-- **Explicit per-node model routing:** pin any node to a specific model + settings (e.g. `claude-opus-4-8`, 1M context, fast mode) as config — never hard-coded.
-
-Full design: **[`docs/PROJECT_BRIEF.md`](docs/PROJECT_BRIEF.md)** is the canonical source of truth; **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)** has the diagrams.
+The full intended workflow is documented in [`docs/PROJECT_BRIEF.md`](docs/PROJECT_BRIEF.md).
+The design documents describe requirements and future integrations as well as
+implemented components; they are not evidence that the complete daemon runs.
 
 ## Quickstart (local dev)
 
@@ -51,7 +49,7 @@ uv run aeroapply ui                                  # Streamlit Kanban-lite: ra
 uv run aeroapply index                # chunk + embed résumé variants → resume_chunk (pgvector)
 uv run aeroapply schedule             # one scheduler cycle: top-N icebox → queued (WIP-limited)
 uv run aeroapply work                 # verify_open → select_resume → retrieve → Generator⇄ATS-Critic (needs model keys)
-# (scaffold — wired up in a later sprint)
+# Starter only: graph/database wiring raises NotImplementedError
 uv run uvicorn services.email_webhook.app:app   # inbound-email webhook (prod: Railway)
 ```
 
@@ -83,8 +81,22 @@ uv run uvicorn services.email_webhook.app:app   # inbound-email webhook (prod: R
 | [CALIBRATION](docs/CALIBRATION.md) | Empirically tuning weights + autonomy thresholds |
 | [ROADMAP](docs/ROADMAP.md) · [SPRINTS](docs/SPRINTS.md) · [adr/](docs/adr/) | Plan + decision records |
 
-## Security & honesty
+## Review and data handling
 
-AeroApply **never fabricates** answers — EEO, visa/sponsorship, clearance, and self-ID fields that can't be matched to your history with high confidence always escalate to you. It is **secure-by-default** (review-before-submit), does **not** defeat CAPTCHAs or anti-bot systems, and respects platform ToS and rate limits. Credentials and PII are encrypted at rest; no real data is committed. See [`docs/SECURITY_COMPLIANCE.md`](docs/SECURITY_COMPLIANCE.md).
+Generated résumés and cover letters can introduce unsupported claims. Review each
+draft against the source résumé and work history before using it. Critic scores
+and similarity thresholds are heuristics, not measured ATS acceptance or a
+guarantee of factual accuracy.
 
-> **Disclaimer:** personal automation tool. Automating applications and account creation on some job platforms (notably LinkedIn) may violate their Terms of Service and carries account-ban risk — those sources are human-gated by default. Not legal advice.
+The planned submission policy requires operator approval and human handling of
+EEO, visa, clearance, self-identification, and unmatched questions. The current
+drafting graph does not connect that policy to a working submission path.
+
+Example files use placeholder values; local profile and environment files are
+gitignored. Gitignore does not provide encryption. The planned credential vault
+does not establish encryption for current profile, database, checkpoint, or log
+data. Configure storage and access controls before entering private information.
+
+See [`docs/SECURITY_COMPLIANCE.md`](docs/SECURITY_COMPLIANCE.md) for requirements
+and implementation gaps. Platform automation restrictions need review before
+adding a submission connector.

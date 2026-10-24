@@ -1,6 +1,11 @@
 # AeroApply — Security & Compliance
 
-> Purpose: the binding security, honesty, and legal posture for an autonomous daemon that creates accounts, encrypts credentials, and can auto-submit job applications on the operator's behalf — and an honest accounting of the residual risk that remains.
+> Status: security requirements and design proposals for a pre-alpha tool. The
+> current execution graph ends after drafting; browser submission, credential
+> storage, and email lifecycle integration are incomplete. The mechanisms below
+> are requirements, not verified runtime guarantees or a compliance assessment.
+> Earlier API auto-submit examples are design history; operator approval is the
+> intended v1 submission policy described in the README.
 
 This document is subordinate to `PROJECT_BRIEF.md` §13 (Security & compliance non-negotiables). Where this expands on the brief it must never contradict it.
 
@@ -8,7 +13,7 @@ This document is subordinate to `PROJECT_BRIEF.md` §13 (Security & compliance n
 
 ## 1. The honesty mandate (non-negotiable)
 
-AeroApply applies under the operator's real name and real work authorization. A single fabricated EEO, visa/sponsorship, security-clearance, or self-identification answer is an integrity failure with real-world consequences (rescinded offers, blacklisting, in regulated roles potential fraud). Therefore the rule is absolute and is enforced in *code*, not policy:
+AeroApply applies under the operator's real name and real work authorization. A single fabricated EEO, visa/sponsorship, security-clearance, or self-identification answer is an integrity failure with real-world consequences (rescinded offers, blacklisting, in regulated roles potential fraud). The implementation must enforce the following requirement before a submission path can be enabled:
 
 **Any EEO / visa / clearance / self-ID field that is not matched to `qa_history` with high confidence is escalated to a human. The agent never guesses, never infers, never defaults.**
 
@@ -24,7 +29,7 @@ WHERE  user_id = $1
 -- The router treats every row here as HITL-only regardless of confidence.
 ```
 
-The honesty gate lives inside `evaluate_submission_route(state)` (`src/aeroapply/graph/routing.py`). The decision table:
+`src/aeroapply/graph/routing.py` contains routing logic, but the drafting graph does not connect it to a submission node. The intended decision table:
 
 ```python
 def honesty_clear(question, match) -> bool:
@@ -43,7 +48,7 @@ A miss here costs the operator ten seconds in the HITL Inbox. A false positive c
 
 ## 2. Secure-by-default autonomy
 
-Autonomy is *earned per application at runtime*, not granted statically. The graph uses a **conditional edge** (`evaluate_submission_route`) before the submit node — deliberately not LangGraph's static `interrupt_before` — so a clean Greenhouse API submission can fly through while the same operator's Workday application is force-parked, in the same run.
+Autonomy is *earned per application at runtime*, not granted statically. The proposed submission graph would use a **conditional edge** (`evaluate_submission_route`) before the submit node — deliberately not LangGraph's static `interrupt_before` — to select the operator-review route. The current graph has no submit node; the API auto-submit example below is a superseded design, not an available connector.
 
 Four independent gates must **all** pass for `submit`; failing any one routes to `escalate_to_human_review`:
 
