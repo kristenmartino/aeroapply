@@ -1,5 +1,10 @@
 # AeroApply — Roadmap & Milestones
 
+> Planning document. Milestone and acceptance-criteria descriptions below are
+> not a completion report. See [current implemented scope](../README.md#current-scope):
+> the execution graph ends after drafting; submission, vault, and email wiring
+> remain incomplete.
+
 *Purpose: map the six 2-week sprints (M1–M6) from foundations to a Railway-deployed, review-default daemon — with goals, scope, exit criteria, risks, and demos for each.*
 
 > This roadmap is downstream of `docs/PROJECT_BRIEF.md` (source of truth). Dates, milestone names, and exit criteria are kept consistent with `docs/SPRINTS.md` and the `backlog/`. Sprint 1 begins the week of **2026-06-08**; six 2-week sprints land the v1 daemon by **2026-08-28**. Each milestone Mn corresponds 1:1 to Sprint n.
